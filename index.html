@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f1117" />
+  <title>KI-Mentor | Verkauf</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg-surface: #1a1d27;
+      --bg-card: #21253a;
+      --accent: #6c63ff;
+      --accent-glow: rgba(108,99,255,0.18);
+      --accent2: #00e5a0;
+      --text: #f0f0f8;
+      --text-muted: #8a8fa8;
+      --border: rgba(255,255,255,0.07);
+      --user-bubble: linear-gradient(135deg, #6c63ff, #9d95ff);
+      --bot-bubble: #21253a;
+      --radius: 16px;
+      --font-head: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-orb {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .logo-orb::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      opacity: 0.3;
+      filter: blur(6px);
+      z-index: -1;
+    }
+
+    .header-title {
+      font-family: var(--font-head);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .header-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent2);
+      box-shadow: 0 0 6px var(--accent2);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    /* ── Config Banner (shown only if not configured) ── */
+    #config-banner {
+      background: rgba(108,99,255,0.12);
+      border-bottom: 1px solid rgba(108,99,255,0.3);
+      padding: 10px 20px;
+      font-size: 12px;
+      color: #a8a3f0;
+      text-align: center;
+      display: none;
+    }
+
+    #config-banner a {
+      color: var(--accent2);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* ── Chat Area ── */
+    #chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    #chat-area::-webkit-scrollbar { width: 4px; }
+    #chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Welcome ── */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 30px 20px;
+      text-align: center;
+      animation: fadeUp 0.5s ease;
+    }
+
+    .welcome-orb {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      position: relative;
+    }
+
+    .welcome-orb::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      opacity: 0.2;
+      filter: blur(12px);
+      z-index: -1;
+    }
+
+    #welcome h1 {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    #welcome p {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 300px;
+      line-height: 1.6;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .suggestion-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--font-body);
+    }
+
+    .suggestion-chip:hover {
+      background: var(--accent-glow);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    /* ── Messages ── */
+    .message {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      animation: fadeUp 0.3s ease;
+    }
+
+    .message.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .avatar.bot {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+    }
+
+    .avatar.user {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .bubble {
+      max-width: min(75%, 400px);
+      padding: 12px 15px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .bubble.user {
+      background: var(--user-bubble);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.bot {
+      background: var(--bot-bubble);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+      color: var(--text);
+    }
+
+    .bubble.bot b, .bubble.bot strong { color: #c5c2ff; }
+
+    .sources {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .source-tag {
+      background: rgba(108,99,255,0.12);
+      border: 1px solid rgba(108,99,255,0.25);
+      border-radius: 10px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #a8a3f0;
+    }
+
+    /* ── Typing Indicator ── */
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      padding: 14px 16px;
+    }
+
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: typingBounce 1.2s ease-in-out infinite;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typingBounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40% { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* ── Input Area ── */
+    #input-area {
+      padding: 12px 16px 16px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 8px 8px 16px;
+      transition: border-color 0.2s;
+    }
+
+    .input-row:focus-within {
+      border-color: rgba(108,99,255,0.5);
+    }
+
+    #user-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 14px;
+      resize: none;
+      max-height: 120px;
+      line-height: 1.5;
+      padding: 4px 0;
+    }
+
+    #user-input::placeholder { color: var(--text-muted); }
+
+    #send-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+
+    #send-btn:active { transform: scale(0.92); }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #send-btn svg { width: 16px; height: 16px; fill: #fff; }
+
+    .char-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+      margin-top: 6px;
+    }
+
+    /* ── Settings Modal ── */
+    #settings-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+
+    #settings-overlay.open { display: flex; }
+
+    #settings-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px 32px;
+      width: 100%;
+      max-width: 520px;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(40px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .settings-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+
+    .settings-title {
+      font-family: var(--font-head);
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .settings-field {
+      margin-bottom: 16px;
+    }
+
+    .settings-field label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .settings-field input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .settings-field input:focus { border-color: rgba(108,99,255,0.5); }
+    .settings-field input::placeholder { color: var(--text-muted); }
+
+    .settings-save {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-family: var(--font-head);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+
+    .settings-save:active { opacity: 0.85; }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Error Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2d1c1c;
+      border: 1px solid rgba(200,80,80,0.4);
+      color: #f4a4a4;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      text-align: center;
+      max-width: 80vw;
+    }
+
+    #toast.show { opacity: 1; }
+
+    /* ── Responsive ── */
+    @media (min-width: 600px) {
+      header { padding: 16px 24px; }
+      #chat-area { padding: 24px; }
+      #input-area { padding: 14px 24px 20px; }
+      .bubble { max-width: 60%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="header-brand">
+    <div class="logo-orb">🧠</div>
+    <div>
+      <div class="header-title">KI-Mentor</div>
+      <div class="header-subtitle">Dein Vertriebs-Assistent</div>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div class="status-dot" title="Online"></div>
+    <button onclick="openSettings()" style="background:none;border:none;cursor:pointer;padding:4px;" title="Einstellungen">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8a8fa8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div id="config-banner">
+  ⚙️ Noch nicht konfiguriert. <a onclick="openSettings()">Klicke hier</a> um API-Keys einzugeben.
+</div>
+
+<!-- Chat Area -->
+<div id="chat-area">
+  <div id="welcome">
+    <div class="welcome-orb">🧠</div>
+    <h1>Hallo, ich bin dein KI-Mentor!</h1>
+    <p>Ich beantworte deine Fragen basierend auf unserem Verkaufs-Wissen. Stelle mir einfach eine Frage.</p>
+    <div class="suggestions">
+      <div class="suggestion-chip" onclick="sendSuggestion('Wie gehe ich mit Preiseinwänden um?')">💬 Preiseinwände</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Was sind unsere stärksten Argumente?')">⭐ Top-Argumente</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Wie schließe ich einen Deal ab?')">🤝 Deal abschließen</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Tipps für das Erstgespräch mit Kunden')">📞 Erstgespräch</div>
+    </div>
+  </div>
+</div>
+
+<!-- Input Area -->
+<div id="input-area">
+  <div class="input-row">
+    <textarea
+      id="user-input"
+      rows="1"
+      placeholder="Frage stellen..."
+      onkeydown="handleKey(event)"
+      oninput="autoResize(this)"
+    ></textarea>
+    <button id="send-btn" onclick="sendMessage()" title="Senden">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+  <div class="char-hint">Enter zum Senden · Shift+Enter für neue Zeile</div>
+</div>
+
+<!-- Settings Panel -->
+<div id="settings-overlay" onclick="closeSettingsIfOutside(event)">
+  <div id="settings-panel">
+    <div class="settings-handle"></div>
+    <div class="settings-title">⚙️ Einstellungen</div>
+
+    <div class="settings-field">
+      <label>Anthropic API Key</label>
+      <input type="password" id="cfg-anthropic" placeholder="sk-ant-..." />
+    </div>
+    <div class="settings-field">
+      <label>Supabase URL</label>
+      <input type="text" id="cfg-supabase-url" placeholder="https://xxxx.supabase.co" />
+    </div>
+    <div class="settings-field">
+      <label>Supabase Anon Key</label>
+      <input type="password" id="cfg-supabase-key" placeholder="eyJ..." />
+    </div>
+    <div class="settings-field">
+      <label>Systemrolle (Prompt für die KI)</label>
+      <input type="text" id="cfg-system" value="Du bist ein erfahrener Verkaufs-Experte. Antworte NUR basierend auf dem bereitgestellten Kontext aus unserer Wissensdatenbank. Wenn die Antwort nicht im Kontext steht, sage das ehrlich. Antworte auf Deutsch, klar und praxisnah." />
+    </div>
+
+    <button class="settings-save" onclick="saveSettings()">💾 Speichern & Schließen</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────
+// CONFIG & STATE
+// ─────────────────────────────────────
+const CONFIG_KEY = 'ki_mentor_config';
+let config = {};
+let supabaseClient = null;
+let isTyping = false;
+let chatHistory = [];
+
+function loadConfig() {
+  try {
+    config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+  } catch(e) { config = {}; }
+}
+
+function saveSettings() {
+  config = {
+    anthropicKey: document.getElementById('cfg-anthropic').value.trim(),
+    supabaseUrl: document.getElementById('cfg-supabase-url').value.trim(),
+    supabaseKey: document.getElementById('cfg-supabase-key').value.trim(),
+    systemPrompt: document.getElementById('cfg-system').value.trim(),
+  };
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  initSupabase();
+  closeSettings();
+  checkConfig();
+  showToast('✅ Einstellungen gespeichert!', 'success');
+}
+
+function initSupabase() {
+  if (config.supabaseUrl && config.supabaseKey) {
+    supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseKey);
+  }
+}
+
+function checkConfig() {
+  const banner = document.getElementById('config-banner');
+  if (!config.anthropicKey || !config.supabaseUrl) {
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────
+// SETTINGS MODAL
+// ─────────────────────────────────────
+function openSettings() {
+  document.getElementById('cfg-anthropic').value = config.anthropicKey || '';
+  document.getElementById('cfg-supabase-url').value = config.supabaseUrl || '';
+  document.getElementById('cfg-supabase-key').value = config.supabaseKey || '';
+  document.getElementById('cfg-system').value = config.systemPrompt || '';
+  document.getElementById('settings-overlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+
+function closeSettingsIfOutside(e) {
+  if (e.target === document.getElementById('settings-overlay')) closeSettings();
+}
+
+// ─────────────────────────────────────
+// CHAT UI
+// ─────────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function sendSuggestion(text) {
+  document.getElementById('user-input').value = text;
+  sendMessage();
+}
+
+function scrollToBottom() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+function hideWelcome() {
+  const w = document.getElementById('welcome');
+  if (w) w.style.display = 'none';
+}
+
+function addMessage(role, text, sources = []) {
+  const area = document.getElementById('chat-area');
+  const isUser = role === 'user';
+
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+
+  const avatar = document.createElement('div');
+  avatar.className = `avatar ${role}`;
+  avatar.textContent = isUser ? '👤' : '🧠';
+
+  const bubble = document.createElement('div');
+  bubble.className = `bubble ${role}`;
+  bubble.innerHTML = formatText(text);
+
+  if (!isUser && sources.length > 0) {
+    const srcDiv = document.createElement('div');
+    srcDiv.className = 'sources';
+    sources.forEach(s => {
+      const tag = document.createElement('span');
+      tag.className = 'source-tag';
+      tag.textContent = '📄 ' + s;
+      srcDiv.appendChild(tag);
+    });
+    bubble.appendChild(srcDiv);
+  }
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  area.appendChild(div);
+  scrollToBottom();
+  return bubble;
+}
+
+function formatText(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function showTyping() {
+  const area = document.getElementById('chat-area');
+  const div = document.createElement('div');
+  div.className = 'message bot';
+  div.id = 'typing-msg';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar bot';
+  avatar.textContent = '🧠';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble bot';
+  bubble.innerHTML = `<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  area.appendChild(div);
+  scrollToBottom();
+}
+
+function hideTyping() {
+  const t = document.getElementById('typing-msg');
+  if (t) t.remove();
+}
+
+function showToast(msg, type = 'error') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = type === 'success' ? '#1c2d1c' : '#2d1c1c';
+  t.style.borderColor = type === 'success' ? 'rgba(80,200,80,0.4)' : 'rgba(200,80,80,0.4)';
+  t.style.color = type === 'success' ? '#a4f4a4' : '#f4a4a4';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ─────────────────────────────────────
+// RAG: SUPABASE WISSENSABRUF
+// ─────────────────────────────────────
+async function getEmbedding(text) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: text }]
+    })
+  });
+  // Note: Anthropic doesn't have a direct embedding API (use OpenAI text-embedding-3-small
+  // or a Supabase Edge Function with a Python embedding model for production)
+  throw new Error('Use embedding function');
+}
+
+async function retrieveContext(query) {
+  if (!supabaseClient) return { text: '', sources: [] };
+
+  try {
+    // Option A: Simple full-text search (no embeddings needed)
+    const { data, error } = await supabaseClient
+      .from('knowledge_base')
+      .select('content, title, source_type')
+      .textSearch('content', query.split(' ').join(' | '), { type: 'websearch' })
+      .limit(5);
+
+    if (error) throw error;
+    if (!data || data.length === 0) return { text: '', sources: [] };
+
+    const text = data.map(d => `[${d.title}]\n${d.content}`).join('\n\n---\n\n');
+    const sources = [...new Set(data.map(d => d.title))];
+    return { text, sources };
+  } catch(e) {
+    console.warn('Supabase Fehler:', e);
+    return { text: '', sources: [] };
+  }
+}
+
+// ─────────────────────────────────────
+// SEND MESSAGE (MAIN LOGIC)
+// ─────────────────────────────────────
+async function sendMessage() {
+  if (isTyping) return;
+
+  const input = document.getElementById('user-input');
+  const userText = input.value.trim();
+  if (!userText) return;
+
+  if (!config.anthropicKey) {
+    openSettings();
+    showToast('Bitte zuerst API Key eingeben');
+    return;
+  }
+
+  hideWelcome();
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  isTyping = true;
+
+  addMessage('user', userText);
+  chatHistory.push({ role: 'user', content: userText });
+
+  showTyping();
+
+  try {
+    // 1. Kontext aus Supabase holen
+    const { text: contextText, sources } = await retrieveContext(userText);
+
+    // 2. System Prompt mit Kontext aufbauen
+    const systemPrompt = (config.systemPrompt || 'Du bist ein hilfreicher Verkaufs-Assistent.') +
+      (contextText
+        ? `\n\n===WISSENSDATENBANK===\n${contextText}\n===ENDE WISSENSDATENBANK===`
+        : '\n\nHinweis: Keine spezifischen Einträge in der Wissensdatenbank gefunden. Antworte allgemein und professionell.');
+
+    // 3. Anthropic API aufrufen
+    const messages = chatHistory.slice(-10); // letzte 10 Nachrichten
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: messages,
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || `API Error ${response.status}`);
+    }
+
+    hideTyping();
+
+    const reply = data.content?.[0]?.text || 'Keine Antwort erhalten.';
+    chatHistory.push({ role: 'assistant', content: reply });
+
+    addMessage('bot', reply, sources);
+
+  } catch(err) {
+    hideTyping();
+    console.error(err);
+    showToast('Fehler: ' + (err.message || 'Unbekannter Fehler'));
+    addMessage('bot', '❌ Es ist ein Fehler aufgetreten. Prüfe deine API-Einstellungen oder versuche es erneut.');
+    chatHistory.pop();
+  }
+
+  isTyping = false;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('user-input').focus();
+}
+
+// ─────────────────────────────────────
+// INIT
+// ─────────────────────────────────────
+loadConfig();
+initSupabase();
+checkConfig();
+</script>
+</body>
+</html>

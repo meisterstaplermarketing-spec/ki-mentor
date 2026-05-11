@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (!apiKey) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY nicht konfiguriert in Vercel Environment Variables' });
   }
-
+  
   try {
     const { messages, system } = req.body;
 

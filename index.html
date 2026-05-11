@@ -567,6 +567,10 @@
     <div class="settings-title">⚙️ Einstellungen</div>
 
     <div class="settings-field">
+      <label>Anthropic API Key</label>
+      <input type="password" id="cfg-anthropic" placeholder="sk-ant-..." />
+    </div>
+    <div class="settings-field">
       <label>Supabase URL</label>
       <input type="text" id="cfg-supabase-url" placeholder="https://xxxx.supabase.co" />
     </div>
@@ -604,6 +608,7 @@ function loadConfig() {
 
 function saveSettings() {
   config = {
+    anthropicKey: document.getElementById('cfg-anthropic').value.trim(),
     supabaseUrl: document.getElementById('cfg-supabase-url').value.trim(),
     supabaseKey: document.getElementById('cfg-supabase-key').value.trim(),
     systemPrompt: document.getElementById('cfg-system').value.trim(),
@@ -623,7 +628,7 @@ function initSupabase() {
 
 function checkConfig() {
   const banner = document.getElementById('config-banner');
-  if (!config.supabaseUrl) {
+  if (!config.anthropicKey) {
     banner.style.display = 'block';
   } else {
     banner.style.display = 'none';
@@ -634,6 +639,7 @@ function checkConfig() {
 // SETTINGS MODAL
 // ─────────────────────────────────────
 function openSettings() {
+  document.getElementById('cfg-anthropic').value = config.anthropicKey || '';
   document.getElementById('cfg-supabase-url').value = config.supabaseUrl || '';
   document.getElementById('cfg-supabase-key').value = config.supabaseKey || '';
   document.getElementById('cfg-system').value = config.systemPrompt || '';
@@ -828,12 +834,22 @@ async function sendMessage() {
         ? `\n\n===WISSENSDATENBANK===\n${contextText}\n===ENDE WISSENSDATENBANK===`
         : '\n\nHinweis: Keine spezifischen Einträge in der Wissensdatenbank gefunden. Antworte allgemein und professionell.');
 
-    // 3. Eigenen Vercel-Proxy aufrufen (kein API Key im Browser nötig!)
+    // 3. Direkt Anthropic API aufrufen
     const messages = chatHistory.slice(-10);
-    const response = await fetch('/api/chat', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: systemPrompt }),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: messages,
+      }),
     });
 
     const data = await response.json();

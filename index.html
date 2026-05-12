@@ -784,19 +784,46 @@ async function retrieveContext(query) {
   if (!supabaseClient) return { text: '', sources: [] };
 
   try {
-    // Option A: Simple full-text search (no embeddings needed)
-    const { data, error } = await supabaseClient
-      .from('knowledge_base')
-      .select('content, title, source_type')
-      .textSearch('content', query.split(' ').join(' | '), { type: 'websearch' })
-      .limit(5);
+    // Suchbegriffe aufteilen und einzeln suchen
+    const words = query.split(' ')
+      .filter(w => w.length > 3)
+      .slice(0, 3);
 
-    if (error) throw error;
-    if (!data || data.length === 0) return { text: '', sources: [] };
+    let allData = [];
 
-    const text = data.map(d => `[${d.title}]\n${d.content}`).join('\n\n---\n\n');
-    const sources = [...new Set(data.map(d => d.title))];
+    // Für jedes wichtige Wort suchen
+    for (const word of words) {
+      const { data } = await supabaseClient
+        .from('knowledge_base')
+        .select('content, title, source_type')
+        .ilike('content', `%${word}%`)
+        .limit(3);
+      if (data) allData = allData.concat(data);
+    }
+
+    // Falls nichts gefunden, alle Einträge holen
+    if (allData.length === 0) {
+      const { data } = await supabaseClient
+        .from('knowledge_base')
+        .select('content, title, source_type')
+        .limit(5);
+      if (data) allData = data;
+    }
+
+    // Duplikate entfernen
+    const seen = new Set();
+    allData = allData.filter(d => {
+      if (seen.has(d.content)) return false;
+      seen.add(d.content);
+      return true;
+    }).slice(0, 5);
+
+    if (allData.length === 0) return { text: '', sources: [] };
+
+    const text = allData.map(d => `[${d.title}]\n${d.content}`).join('\n\n---\n\n');
+    const sources = [...new Set(allData.map(d => d.title))];
     return { text, sources };
+
   } catch(e) {
     console.warn('Supabase Fehler:', e);
     return { text: '', sources: [] };

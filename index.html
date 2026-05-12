@@ -2,598 +2,649 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0f1117" />
-  <title>KI-Mentor | Verkauf</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>KI-Mentor</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    :root {
-      --bg: #0f1117;
-      --bg-surface: #1a1d27;
-      --bg-card: #21253a;
-      --accent: #6c63ff;
-      --accent-glow: rgba(108,99,255,0.18);
-      --accent2: #00e5a0;
-      --text: #f0f0f8;
-      --text-muted: #8a8fa8;
-      --border: rgba(255,255,255,0.07);
-      --user-bubble: linear-gradient(135deg, #6c63ff, #9d95ff);
-      --bot-bubble: #21253a;
-      --radius: 16px;
-      --font-head: 'Syne', sans-serif;
-      --font-body: 'DM Sans', sans-serif;
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      --bg:           #f2f2f7;
+      --bg-nav:       rgba(249,249,249,0.94);
+      --bg-card:      #ffffff;
+      --bg-input:     #ffffff;
+      --text:         #000000;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #aeaeb2;
+      --separator:    rgba(60,60,67,0.12);
+      --separator-strong: rgba(60,60,67,0.29);
+      --blue:         #007aff;
+      --green:        #34c759;
+      --fill:         rgba(120,120,128,0.12);
+      --fill2:        rgba(120,120,128,0.08);
+      --shadow:       0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:           #000000;
+        --bg-nav:       rgba(28,28,30,0.94);
+        --bg-card:      #1c1c1e;
+        --bg-input:     #2c2c2e;
+        --text:         #ffffff;
+        --text-secondary: rgba(235,235,245,0.6);
+        --text-tertiary: rgba(235,235,245,0.3);
+        --separator:    rgba(84,84,88,0.65);
+        --separator-strong: rgba(84,84,88,0.8);
+        --blue:         #0a84ff;
+        --green:        #30d158;
+        --fill:         rgba(120,120,128,0.36);
+        --fill2:        rgba(120,120,128,0.20);
+        --shadow:       0 1px 3px rgba(0,0,0,0.3);
+      }
+    }
+
+    html, body { height: 100%; height: 100dvh; }
 
     body {
-      font-family: var(--font-body);
+      font-family: var(--sf);
       background: var(--bg);
       color: var(--text);
-      height: 100dvh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
 
-    /* ── Header ── */
-    header {
+    /* ── Nav ── */
+    nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 20px;
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      background: var(--bg-nav);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 0.5px solid var(--separator);
       flex-shrink: 0;
-      gap: 12px;
+      position: relative;
+      z-index: 10;
     }
 
-    .header-brand {
+    .nav-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 10px;
+      pointer-events: none;
     }
 
-    .logo-orb {
-      width: 36px;
-      height: 36px;
+    .nav-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      color: var(--text);
+    }
+
+    .nav-subtitle {
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 400;
+    }
+
+    .nav-avatar {
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background: linear-gradient(145deg, #5e5ce6, #007aff);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 16px;
-      flex-shrink: 0;
-      position: relative;
     }
 
-    .logo-orb::after {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      opacity: 0.3;
-      filter: blur(6px);
-      z-index: -1;
+    .nav-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--blue);
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .header-title {
-      font-family: var(--font-head);
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }
+    .nav-btn:active { opacity: 0.5; }
 
-    .header-subtitle {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 1px;
-    }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent2);
-      box-shadow: 0 0 6px var(--accent2);
-      animation: pulse 2.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.6; transform: scale(0.85); }
-    }
-
-    /* ── Config Banner (shown only if not configured) ── */
+    /* ── Banner ── */
     #config-banner {
-      background: rgba(108,99,255,0.12);
-      border-bottom: 1px solid rgba(108,99,255,0.3);
-      padding: 10px 20px;
-      font-size: 12px;
-      color: #a8a3f0;
+      background: #fff3cd;
+      border-bottom: 0.5px solid #ffc107;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #664d03;
       text-align: center;
       display: none;
     }
 
-    #config-banner a {
-      color: var(--accent2);
-      text-decoration: underline;
-      cursor: pointer;
+    @media (prefers-color-scheme: dark) {
+      #config-banner { background: #2c2200; color: #ffd60a; border-color: #443300; }
     }
 
-    /* ── Chat Area ── */
+    #config-banner a { color: var(--blue); text-decoration: none; font-weight: 500; cursor: pointer; }
+
+    /* ── Chat ── */
     #chat-area {
       flex: 1;
       overflow-y: auto;
-      padding: 20px 16px;
+      padding: 16px 16px 8px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 4px;
       scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
     }
 
-    #chat-area::-webkit-scrollbar { width: 4px; }
-    #chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    #chat-area::-webkit-scrollbar { display: none; }
 
     /* ── Welcome ── */
     #welcome {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 16px;
-      padding: 30px 20px;
-      text-align: center;
-      animation: fadeUp 0.5s ease;
+      gap: 12px;
+      padding: 40px 20px 24px;
+      animation: fadeIn 0.4s ease;
     }
 
-    .welcome-orb {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+    .welcome-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 22px;
+      background: linear-gradient(145deg, #5e5ce6, #007aff);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 30px;
-      position: relative;
+      font-size: 36px;
+      box-shadow: 0 8px 24px rgba(0,122,255,0.28);
     }
 
-    .welcome-orb::after {
-      content: '';
-      position: absolute;
-      inset: -6px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      opacity: 0.2;
-      filter: blur(12px);
-      z-index: -1;
-    }
-
-    #welcome h1 {
-      font-family: var(--font-head);
+    .welcome-title {
       font-size: 22px;
       font-weight: 700;
+      letter-spacing: -0.5px;
+      text-align: center;
     }
 
-    #welcome p {
-      font-size: 14px;
-      color: var(--text-muted);
-      max-width: 300px;
-      line-height: 1.6;
+    .welcome-sub {
+      font-size: 15px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.5;
+      letter-spacing: -0.2px;
     }
 
     .suggestions {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
       gap: 8px;
-      justify-content: center;
+      width: 100%;
+      max-width: 340px;
       margin-top: 8px;
     }
 
     .suggestion-chip {
       background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 8px 14px;
-      font-size: 12px;
-      color: var(--text-muted);
+      border: 0.5px solid var(--separator-strong);
+      border-radius: 13px;
+      padding: 12px 16px;
+      font-size: 15px;
+      color: var(--blue);
       cursor: pointer;
-      transition: all 0.2s;
-      font-family: var(--font-body);
+      text-align: left;
+      font-family: var(--sf);
+      font-weight: 400;
+      letter-spacing: -0.2px;
+      box-shadow: var(--shadow);
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.15s;
     }
 
-    .suggestion-chip:hover {
-      background: var(--accent-glow);
-      border-color: var(--accent);
-      color: var(--text);
-    }
+    .suggestion-chip:active { opacity: 0.6; }
 
     /* ── Messages ── */
     .message {
       display: flex;
-      gap: 10px;
-      align-items: flex-end;
-      animation: fadeUp 0.3s ease;
+      flex-direction: column;
+      animation: msgIn 0.22s ease;
+      margin-bottom: 2px;
     }
 
-    .message.user { flex-direction: row-reverse; }
-
-    .avatar {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .avatar.bot {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-    }
-
-    .avatar.user {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      font-size: 11px;
-      color: var(--text-muted);
-    }
+    .message.user { align-items: flex-end; }
+    .message.bot  { align-items: flex-start; }
+    .message.user + .message.bot,
+    .message.bot + .message.user { margin-top: 10px; }
 
     .bubble {
-      max-width: min(75%, 400px);
-      padding: 12px 15px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      line-height: 1.65;
+      max-width: min(78%, 360px);
+      padding: 10px 14px;
+      font-size: 17px;
+      line-height: 1.45;
+      letter-spacing: -0.2px;
+      word-break: break-word;
     }
 
     .bubble.user {
-      background: var(--user-bubble);
+      background: var(--blue);
       color: #fff;
-      border-bottom-right-radius: 4px;
+      border-radius: 18px 18px 4px 18px;
     }
 
     .bubble.bot {
-      background: var(--bot-bubble);
-      border: 1px solid var(--border);
-      border-bottom-left-radius: 4px;
+      background: var(--bg-card);
       color: var(--text);
+      border-radius: 18px 18px 18px 4px;
+      box-shadow: var(--shadow);
     }
 
-    .bubble.bot b, .bubble.bot strong { color: #c5c2ff; }
+    .bubble.bot strong { color: var(--blue); font-weight: 600; }
 
     .sources {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid var(--border);
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 4px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 0.5px solid var(--separator);
     }
 
     .source-tag {
-      background: rgba(108,99,255,0.12);
-      border: 1px solid rgba(108,99,255,0.25);
-      border-radius: 10px;
-      padding: 3px 8px;
-      font-size: 11px;
-      color: #a8a3f0;
+      background: var(--fill2);
+      border-radius: 20px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
     }
 
-    /* ── Typing Indicator ── */
-    .typing-indicator {
-      display: flex;
-      gap: 4px;
+    /* ── Typing ── */
+    .typing-bubble {
+      background: var(--bg-card);
+      border-radius: 18px 18px 18px 4px;
+      padding: 14px 18px;
+      box-shadow: var(--shadow);
+      display: inline-flex;
+      gap: 5px;
       align-items: center;
-      padding: 14px 16px;
     }
 
     .typing-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: var(--text-muted);
-      animation: typingBounce 1.2s ease-in-out infinite;
+      background: var(--text-tertiary);
+      animation: typingBounce 1.3s ease-in-out infinite;
     }
 
-    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    .typing-dot:nth-child(2) { animation-delay: 0.18s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.36s; }
 
     @keyframes typingBounce {
-      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-      40% { transform: translateY(-6px); opacity: 1; }
+      0%, 70%, 100% { transform: translateY(0); }
+      35% { transform: translateY(-5px); }
     }
 
-    /* ── Input Area ── */
+    /* ── Input ── */
     #input-area {
-      padding: 12px 16px 16px;
-      background: var(--bg-surface);
-      border-top: 1px solid var(--border);
       flex-shrink: 0;
+      padding: 8px 16px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      background: var(--bg-nav);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-top: 0.5px solid var(--separator);
     }
 
     .input-row {
       display: flex;
       align-items: flex-end;
-      gap: 10px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 8px 8px 8px 16px;
+      gap: 8px;
+    }
+
+    .input-wrap {
+      flex: 1;
+      background: var(--bg-input);
+      border: 0.5px solid var(--separator-strong);
+      border-radius: 22px;
+      display: flex;
+      align-items: flex-end;
+      padding: 8px 14px;
+      box-shadow: var(--shadow);
       transition: border-color 0.2s;
     }
 
-    .input-row:focus-within {
-      border-color: rgba(108,99,255,0.5);
-    }
+    .input-wrap:focus-within { border-color: var(--blue); }
 
     #user-input {
       flex: 1;
       background: none;
       border: none;
       outline: none;
+      font-family: var(--sf);
+      font-size: 17px;
       color: var(--text);
-      font-family: var(--font-body);
-      font-size: 14px;
       resize: none;
       max-height: 120px;
-      line-height: 1.5;
-      padding: 4px 0;
+      line-height: 1.45;
+      letter-spacing: -0.2px;
     }
 
-    #user-input::placeholder { color: var(--text-muted); }
+    #user-input::placeholder { color: var(--text-tertiary); }
 
     #send-btn {
-      width: 36px;
-      height: 36px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background: var(--blue);
       border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      transition: transform 0.15s, opacity 0.15s;
+      box-shadow: 0 2px 8px rgba(0,122,255,0.35);
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s, opacity 0.15s;
     }
 
-    #send-btn:active { transform: scale(0.92); }
-    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #send-btn:active { transform: scale(0.9); }
+    #send-btn:disabled { opacity: 0.3; box-shadow: none; cursor: default; }
+    #send-btn svg { width: 16px; height: 16px; fill: white; margin-left: 1px; }
 
-    #send-btn svg { width: 16px; height: 16px; fill: #fff; }
-
-    .char-hint {
-      font-size: 11px;
-      color: var(--text-muted);
-      text-align: right;
-      margin-top: 6px;
-    }
-
-    /* ── Settings Modal ── */
+    /* ── Settings Sheet ── */
     #settings-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.4);
       display: none;
       align-items: flex-end;
       justify-content: center;
       z-index: 100;
-      backdrop-filter: blur(4px);
     }
 
     #settings-overlay.open { display: flex; }
 
     #settings-panel {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: 24px 24px 0 0;
-      padding: 24px 20px 32px;
+      background: var(--bg-card);
+      border-radius: 12px 12px 0 0;
       width: 100%;
-      max-width: 520px;
-      animation: slideUp 0.3s ease;
+      max-width: 540px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      animation: sheetUp 0.35s cubic-bezier(0.32,0.72,0,1);
+      max-height: 90dvh;
+      overflow-y: auto;
     }
 
-    @keyframes slideUp {
-      from { transform: translateY(40px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+    @keyframes sheetUp {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
     }
 
-    .settings-handle {
+    .sheet-handle {
       width: 36px;
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      margin: 0 auto 20px;
+      height: 5px;
+      background: var(--fill);
+      border-radius: 3px;
+      margin: 12px auto 0;
     }
 
-    .settings-title {
-      font-family: var(--font-head);
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 20px;
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px 0;
     }
 
-    .settings-field {
-      margin-bottom: 16px;
+    .sheet-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
     }
 
-    .settings-field label {
-      display: block;
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-bottom: 6px;
+    .sheet-close {
+      background: var(--fill);
+      border: none;
+      cursor: pointer;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-family: var(--sf);
+      font-weight: 600;
+    }
+
+    .sheet-section { margin: 20px 20px 0; }
+
+    .sheet-section-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      padding-left: 4px;
     }
 
-    .settings-field input {
-      width: 100%;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 14px;
-      color: var(--text);
-      font-family: var(--font-body);
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s;
+    .sheet-group {
+      background: var(--bg-input);
+      border: 0.5px solid var(--separator-strong);
+      border-radius: 13px;
+      overflow: hidden;
     }
 
-    .settings-field input:focus { border-color: rgba(108,99,255,0.5); }
-    .settings-field input::placeholder { color: var(--text-muted); }
+    .field-row {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      border-bottom: 0.5px solid var(--separator);
+      gap: 10px;
+    }
 
-    .settings-save {
-      width: 100%;
-      padding: 13px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none;
-      border-radius: 12px;
-      color: #fff;
-      font-family: var(--font-head);
+    .field-row:last-child { border-bottom: none; }
+
+    .field-label {
       font-size: 15px;
+      color: var(--text);
+      min-width: 76px;
+      flex-shrink: 0;
+      letter-spacing: -0.2px;
+    }
+
+    .field-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      font-family: var(--sf);
+      font-size: 15px;
+      color: var(--text);
+      text-align: right;
+      letter-spacing: -0.2px;
+    }
+
+    .field-input::placeholder { color: var(--text-tertiary); }
+
+    .field-input.left { text-align: left; }
+
+    .sheet-save {
+      margin: 20px 20px 0;
+      width: calc(100% - 40px);
+      padding: 14px;
+      background: var(--blue);
+      border: none;
+      border-radius: 13px;
+      color: #fff;
+      font-family: var(--sf);
+      font-size: 17px;
       font-weight: 600;
+      letter-spacing: -0.3px;
       cursor: pointer;
-      margin-top: 8px;
+      -webkit-tap-highlight-color: transparent;
       transition: opacity 0.15s;
     }
 
-    .settings-save:active { opacity: 0.85; }
+    .sheet-save:active { opacity: 0.8; }
 
-    /* ── Animations ── */
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── Error Toast ── */
+    /* ── Toast ── */
     #toast {
       position: fixed;
-      bottom: 90px;
+      top: 80px;
       left: 50%;
-      transform: translateX(-50%);
-      background: #2d1c1c;
-      border: 1px solid rgba(200,80,80,0.4);
-      color: #f4a4a4;
+      transform: translateX(-50%) translateY(-8px);
+      background: rgba(50,50,52,0.92);
+      color: #fff;
       padding: 10px 18px;
-      border-radius: 10px;
-      font-size: 13px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.2px;
       z-index: 200;
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.25s, transform 0.25s;
       pointer-events: none;
-      text-align: center;
-      max-width: 80vw;
+      backdrop-filter: blur(12px);
+      white-space: nowrap;
     }
 
-    #toast.show { opacity: 1; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ── Responsive ── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
     @media (min-width: 600px) {
-      header { padding: 16px 24px; }
-      #chat-area { padding: 24px; }
-      #input-area { padding: 14px 24px 20px; }
-      .bubble { max-width: 60%; }
+      #chat-area { padding: 20px; max-width: 700px; margin: 0 auto; width: 100%; }
+      .bubble { max-width: 55%; font-size: 16px; }
     }
   </style>
 </head>
 <body>
 
-<!-- Header -->
-<header>
-  <div class="header-brand">
-    <div class="logo-orb">🧠</div>
-    <div>
-      <div class="header-title">KI-Mentor</div>
-      <div class="header-subtitle">Dein Vertriebs-Assistent</div>
-    </div>
+<nav>
+  <div class="nav-avatar">🧠</div>
+  <div class="nav-center">
+    <div class="nav-title">KI-Mentor</div>
+    <div class="nav-subtitle">● Online</div>
   </div>
-  <div style="display:flex; align-items:center; gap:12px;">
-    <div class="status-dot" title="Online"></div>
-    <button onclick="openSettings()" style="background:none;border:none;cursor:pointer;padding:4px;" title="Einstellungen">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8a8fa8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    </button>
-  </div>
-</header>
+  <button class="nav-btn" onclick="openSettings()" title="Einstellungen">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+</nav>
 
 <div id="config-banner">
-  ⚙️ Noch nicht konfiguriert. <a onclick="openSettings()">Klicke hier</a> um API-Keys einzugeben.
+  API Key fehlt — <a onclick="openSettings()">Einstellungen öffnen</a>
 </div>
 
-<!-- Chat Area -->
 <div id="chat-area">
   <div id="welcome">
-    <div class="welcome-orb">🧠</div>
-    <h1>Hallo, ich bin dein KI-Mentor!</h1>
-    <p>Ich beantworte deine Fragen basierend auf unserem Verkaufs-Wissen. Stelle mir einfach eine Frage.</p>
+    <div class="welcome-icon">🧠</div>
+    <div class="welcome-title">Hallo, ich bin dein KI-Mentor</div>
+    <div class="welcome-sub">Ich beantworte deine Fragen basierend auf unserem Verkaufswissen.</div>
     <div class="suggestions">
-      <div class="suggestion-chip" onclick="sendSuggestion('Wie gehe ich mit Preiseinwänden um?')">💬 Preiseinwände</div>
-      <div class="suggestion-chip" onclick="sendSuggestion('Was sind unsere stärksten Argumente?')">⭐ Top-Argumente</div>
-      <div class="suggestion-chip" onclick="sendSuggestion('Wie schließe ich einen Deal ab?')">🤝 Deal abschließen</div>
-      <div class="suggestion-chip" onclick="sendSuggestion('Tipps für das Erstgespräch mit Kunden')">📞 Erstgespräch</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Wie gehe ich mit Preiseinwänden um?')">Wie gehe ich mit Preiseinwänden um?</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Was sind unsere stärksten Verkaufsargumente?')">Was sind unsere stärksten Verkaufsargumente?</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Tipps für das Erstgespräch mit Kunden')">Tipps für das Erstgespräch mit Kunden</div>
+      <div class="suggestion-chip" onclick="sendSuggestion('Wie schließe ich einen Deal erfolgreich ab?')">Wie schließe ich einen Deal erfolgreich ab?</div>
     </div>
   </div>
 </div>
 
-<!-- Input Area -->
 <div id="input-area">
   <div class="input-row">
-    <textarea
-      id="user-input"
-      rows="1"
-      placeholder="Frage stellen..."
-      onkeydown="handleKey(event)"
-      oninput="autoResize(this)"
-    ></textarea>
-    <button id="send-btn" onclick="sendMessage()" title="Senden">
+    <div class="input-wrap">
+      <textarea id="user-input" rows="1" placeholder="Nachricht"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    </div>
+    <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
   </div>
-  <div class="char-hint">Enter zum Senden · Shift+Enter für neue Zeile</div>
 </div>
 
-<!-- Settings Panel -->
+<!-- Settings Sheet -->
 <div id="settings-overlay" onclick="closeSettingsIfOutside(event)">
   <div id="settings-panel">
-    <div class="settings-handle"></div>
-    <div class="settings-title">⚙️ Einstellungen</div>
-
-    <div class="settings-field">
-      <label>Anthropic API Key</label>
-      <input type="password" id="cfg-anthropic" placeholder="sk-ant-..." />
-    </div>
-    <div class="settings-field">
-      <label>Supabase URL</label>
-      <input type="text" id="cfg-supabase-url" placeholder="https://xxxx.supabase.co" />
-    </div>
-    <div class="settings-field">
-      <label>Supabase Anon Key</label>
-      <input type="password" id="cfg-supabase-key" placeholder="eyJ..." />
-    </div>
-    <div class="settings-field">
-      <label>Systemrolle (Prompt für die KI)</label>
-      <input type="text" id="cfg-system" value="Du bist ein erfahrener Verkaufs-Experte. Antworte NUR basierend auf dem bereitgestellten Kontext aus unserer Wissensdatenbank. Wenn die Antwort nicht im Kontext steht, sage das ehrlich. Antworte auf Deutsch, klar und praxisnah." />
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Einstellungen</div>
+      <button class="sheet-close" onclick="closeSettings()">✕</button>
     </div>
 
-    <button class="settings-save" onclick="saveSettings()">💾 Speichern & Schließen</button>
+    <div class="sheet-section">
+      <div class="sheet-section-label">Anthropic</div>
+      <div class="sheet-group">
+        <div class="field-row">
+          <div class="field-label">API Key</div>
+          <input class="field-input" type="password" id="cfg-anthropic" placeholder="sk-ant-..." />
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-label">Supabase</div>
+      <div class="sheet-group">
+        <div class="field-row">
+          <div class="field-label">URL</div>
+          <input class="field-input" type="text" id="cfg-supabase-url" placeholder="https://xxx.supabase.co" />
+        </div>
+        <div class="field-row">
+          <div class="field-label">Anon Key</div>
+          <input class="field-input" type="password" id="cfg-supabase-key" placeholder="eyJ..." />
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-label">KI-Rolle</div>
+      <div class="sheet-group">
+        <div class="field-row">
+          <input class="field-input left" type="text" id="cfg-system"
+            value="Du bist ein erfahrener Verkaufs-Experte. Antworte NUR basierend auf dem bereitgestellten Kontext aus unserer Wissensdatenbank. Wenn die Antwort nicht im Kontext steht, sage das ehrlich. Antworte auf Deutsch, klar und praxisnah." />
+        </div>
+      </div>
+    </div>
+
+    <button class="sheet-save" onclick="saveSettings()">Sichern</button>
   </div>
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 <script>
-// ─────────────────────────────────────
-// CONFIG & STATE
-// ─────────────────────────────────────
 const CONFIG_KEY = 'ki_mentor_config';
 let config = {};
 let supabaseClient = null;
@@ -601,48 +652,38 @@ let isTyping = false;
 let chatHistory = [];
 
 function loadConfig() {
-  try {
-    config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
-  } catch(e) { config = {}; }
+  try { config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); }
+  catch(e) { config = {}; }
 }
 
 function saveSettings() {
   config = {
     anthropicKey: document.getElementById('cfg-anthropic').value.trim(),
-    supabaseUrl: document.getElementById('cfg-supabase-url').value.trim(),
-    supabaseKey: document.getElementById('cfg-supabase-key').value.trim(),
+    supabaseUrl:  document.getElementById('cfg-supabase-url').value.trim(),
+    supabaseKey:  document.getElementById('cfg-supabase-key').value.trim(),
     systemPrompt: document.getElementById('cfg-system').value.trim(),
   };
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
   initSupabase();
   closeSettings();
   checkConfig();
-  showToast('✅ Einstellungen gespeichert!', 'success');
+  showToast('Einstellungen gesichert');
 }
 
 function initSupabase() {
-  if (config.supabaseUrl && config.supabaseKey) {
+  if (config.supabaseUrl && config.supabaseKey)
     supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseKey);
-  }
 }
 
 function checkConfig() {
-  const banner = document.getElementById('config-banner');
-  if (!config.anthropicKey) {
-    banner.style.display = 'block';
-  } else {
-    banner.style.display = 'none';
-  }
+  document.getElementById('config-banner').style.display = config.anthropicKey ? 'none' : 'block';
 }
 
-// ─────────────────────────────────────
-// SETTINGS MODAL
-// ─────────────────────────────────────
 function openSettings() {
-  document.getElementById('cfg-anthropic').value = config.anthropicKey || '';
-  document.getElementById('cfg-supabase-url').value = config.supabaseUrl || '';
-  document.getElementById('cfg-supabase-key').value = config.supabaseKey || '';
-  document.getElementById('cfg-system').value = config.systemPrompt || '';
+  document.getElementById('cfg-anthropic').value    = config.anthropicKey || '';
+  document.getElementById('cfg-supabase-url').value = config.supabaseUrl  || '';
+  document.getElementById('cfg-supabase-key').value = config.supabaseKey  || '';
+  document.getElementById('cfg-system').value       = config.systemPrompt || '';
   document.getElementById('settings-overlay').classList.add('open');
 }
 
@@ -654,19 +695,13 @@ function closeSettingsIfOutside(e) {
   if (e.target === document.getElementById('settings-overlay')) closeSettings();
 }
 
-// ─────────────────────────────────────
-// CHAT UI
-// ─────────────────────────────────────
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
 function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
 
 function sendSuggestion(text) {
@@ -675,31 +710,23 @@ function sendSuggestion(text) {
 }
 
 function scrollToBottom() {
-  const area = document.getElementById('chat-area');
-  area.scrollTop = area.scrollHeight;
+  const a = document.getElementById('chat-area');
+  a.scrollTop = a.scrollHeight;
 }
 
 function hideWelcome() {
   const w = document.getElementById('welcome');
-  if (w) w.style.display = 'none';
+  if (w) w.remove();
 }
 
 function addMessage(role, text, sources = []) {
   const area = document.getElementById('chat-area');
-  const isUser = role === 'user';
-
-  const div = document.createElement('div');
-  div.className = `message ${role}`;
-
-  const avatar = document.createElement('div');
-  avatar.className = `avatar ${role}`;
-  avatar.textContent = isUser ? '👤' : '🧠';
-
+  const wrap = document.createElement('div');
+  wrap.className = `message ${role}`;
   const bubble = document.createElement('div');
   bubble.className = `bubble ${role}`;
   bubble.innerHTML = formatText(text);
-
-  if (!isUser && sources.length > 0) {
+  if (role === 'bot' && sources.length > 0) {
     const srcDiv = document.createElement('div');
     srcDiv.className = 'sources';
     sources.forEach(s => {
@@ -710,12 +737,9 @@ function addMessage(role, text, sources = []) {
     });
     bubble.appendChild(srcDiv);
   }
-
-  div.appendChild(avatar);
-  div.appendChild(bubble);
-  area.appendChild(div);
+  wrap.appendChild(bubble);
+  area.appendChild(wrap);
   scrollToBottom();
-  return bubble;
 }
 
 function formatText(text) {
@@ -727,18 +751,11 @@ function formatText(text) {
 
 function showTyping() {
   const area = document.getElementById('chat-area');
-  const div = document.createElement('div');
-  div.className = 'message bot';
-  div.id = 'typing-msg';
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar bot';
-  avatar.textContent = '🧠';
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble bot';
-  bubble.innerHTML = `<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
-  div.appendChild(avatar);
-  div.appendChild(bubble);
-  area.appendChild(div);
+  const wrap = document.createElement('div');
+  wrap.className = 'message bot';
+  wrap.id = 'typing-msg';
+  wrap.innerHTML = `<div class="typing-bubble"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  area.appendChild(wrap);
   scrollToBottom();
 }
 
@@ -747,51 +764,18 @@ function hideTyping() {
   if (t) t.remove();
 }
 
-function showToast(msg, type = 'error') {
+function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.style.background = type === 'success' ? '#1c2d1c' : '#2d1c1c';
-  t.style.borderColor = type === 'success' ? 'rgba(80,200,80,0.4)' : 'rgba(200,80,80,0.4)';
-  t.style.color = type === 'success' ? '#a4f4a4' : '#f4a4a4';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3500);
-}
-
-// ─────────────────────────────────────
-// RAG: SUPABASE WISSENSABRUF
-// ─────────────────────────────────────
-async function getEmbedding(text) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': config.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 10,
-      messages: [{ role: 'user', content: text }]
-    })
-  });
-  // Note: Anthropic doesn't have a direct embedding API (use OpenAI text-embedding-3-small
-  // or a Supabase Edge Function with a Python embedding model for production)
-  throw new Error('Use embedding function');
+  setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 async function retrieveContext(query) {
   if (!supabaseClient) return { text: '', sources: [] };
-
   try {
-    // Suchbegriffe aufteilen und einzeln suchen
-    const words = query.split(' ')
-      .filter(w => w.length > 3)
-      .slice(0, 3);
-
+    const words = query.split(' ').filter(w => w.length > 3).slice(0, 3);
     let allData = [];
-
-    // Für jedes wichtige Wort suchen
     for (const word of words) {
       const { data } = await supabaseClient
         .from('knowledge_base')
@@ -800,8 +784,6 @@ async function retrieveContext(query) {
         .limit(3);
       if (data) allData = allData.concat(data);
     }
-
-    // Falls nichts gefunden, alle Einträge holen
     if (allData.length === 0) {
       const { data } = await supabaseClient
         .from('knowledge_base')
@@ -809,36 +791,29 @@ async function retrieveContext(query) {
         .limit(5);
       if (data) allData = data;
     }
-
-    // Duplikate entfernen
     const seen = new Set();
     allData = allData.filter(d => {
       if (seen.has(d.content)) return false;
       seen.add(d.content);
       return true;
     }).slice(0, 5);
-
-    if (allData.length === 0) return { text: '', sources: [] };
-
-    const text = allData.map(d => `[${d.title}]\n${d.content}`).join('\n\n---\n\n');
-    const sources = [...new Set(allData.map(d => d.title))];
-    return { text, sources };
-
+    if (!allData.length) return { text: '', sources: [] };
+    return {
+      text: allData.map(d => `[${d.title}]\n${d.content}`).join('\n\n---\n\n'),
+      sources: [...new Set(allData.map(d => d.title))],
+    };
   } catch(e) {
-    console.warn('Supabase Fehler:', e);
+    console.warn('Supabase:', e);
     return { text: '', sources: [] };
   }
 }
 
-// ─────────────────────────────────────
-// SEND MESSAGE (MAIN LOGIC)
-// ─────────────────────────────────────
 async function sendMessage() {
   if (isTyping) return;
-
   const input = document.getElementById('user-input');
   const userText = input.value.trim();
   if (!userText) return;
+  if (!config.anthropicKey) { openSettings(); return; }
 
   hideWelcome();
   input.value = '';
@@ -848,21 +823,15 @@ async function sendMessage() {
 
   addMessage('user', userText);
   chatHistory.push({ role: 'user', content: userText });
-
   showTyping();
 
   try {
-    // 1. Kontext aus Supabase holen
     const { text: contextText, sources } = await retrieveContext(userText);
-
-    // 2. System Prompt mit Kontext aufbauen
     const systemPrompt = (config.systemPrompt || 'Du bist ein hilfreicher Verkaufs-Assistent.') +
       (contextText
-        ? `\n\n===WISSENSDATENBANK===\n${contextText}\n===ENDE WISSENSDATENBANK===`
-        : '\n\nHinweis: Keine spezifischen Einträge in der Wissensdatenbank gefunden. Antworte allgemein und professionell.');
+        ? `\n\n===WISSENSDATENBANK===\n${contextText}\n===ENDE===`
+        : '\n\nHinweis: Keine Einträge gefunden. Antworte allgemein und professionell.');
 
-    // 3. Direkt Anthropic API aufrufen
-    const messages = chatHistory.slice(-10);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -875,28 +844,23 @@ async function sendMessage() {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: systemPrompt,
-        messages: messages,
+        messages: chatHistory.slice(-10),
       }),
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || `API Error ${response.status}`);
-    }
+    if (!response.ok) throw new Error(data.error?.message || `Fehler ${response.status}`);
 
     hideTyping();
-
     const reply = data.content?.[0]?.text || 'Keine Antwort erhalten.';
     chatHistory.push({ role: 'assistant', content: reply });
-
     addMessage('bot', reply, sources);
 
   } catch(err) {
     hideTyping();
     console.error(err);
-    showToast('Fehler: ' + (err.message || 'Unbekannter Fehler'));
-    addMessage('bot', '❌ Es ist ein Fehler aufgetreten. Bitte versuche es erneut.');
+    showToast('Fehler: ' + (err.message || 'Unbekannt'));
+    addMessage('bot', 'Es ist ein Fehler aufgetreten. Bitte versuche es erneut.');
     chatHistory.pop();
   }
 
@@ -905,9 +869,6 @@ async function sendMessage() {
   document.getElementById('user-input').focus();
 }
 
-// ─────────────────────────────────────
-// INIT
-// ─────────────────────────────────────
 loadConfig();
 initSupabase();
 checkConfig();

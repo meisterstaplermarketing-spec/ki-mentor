@@ -65,6 +65,29 @@ Blockiert der Browser den Abruf (CORS), holt der Dienst Links von meisterstapler
 down.noblelift.com serverseitig ab; andere Seiten sind nicht freigegeben. Neue Datenblätter einfach in den
 Speicherordner `datasheets` legen bzw. Geräte im Katalog pflegen – die KI lernt sie von selbst.
 
+## Bibliothek (Noblelift-Serviceportal, ca. 3.400 Dateien)
+
+Für große Dokumentmengen, die nicht auf jedes Handy passen, gibt es die **Bibliothek**: Der Text
+aller Service-Unterlagen (Fehlercodes, Bedienungsanleitungen, Service-Handbücher, Ersatzteillisten,
+Schalt-/Hydraulikpläne, Zertifikate und Prüfberichte) liegt einmal zentral in der Datenbank und wird
+dort per Postgres-Volltextsuche durchsucht – keine Fremd-KI, keine Tokens.
+
+- **Mitlesen:** 🎓 → „Bibliothek“ → „Mitlesen starten“. Das Gerät lädt die Dateien nacheinander, liest
+  den Text aus (PDF über pdf.js, Excel über SheetJS, Word über JSZip – alles lokal in `vendor/`) und
+  speichert ihn. Fehlercodes und Anleitungen kommen zuerst, Zertifikate zuletzt. Anhalten und
+  Fortsetzen geht jederzeit; mehrere Geräte können parallel lesen. Neue Dateien auf der
+  Noblelift-Seite werden alle 6 Stunden in die Liste aufgenommen.
+- **Fragen:** Ist das eigene Wissen unsicher, fragt die App die Bibliothek. Deutsche Fachbegriffe
+  werden dafür um englische ergänzt (Ladegerät → charger, Fehler → fault …), die Treffer bewertet die
+  eigene Engine nach. Die Antwort zeigt den passenden Ausschnitt, Dokument, Seite und Link.
+  Mit 👍 wird sie festes, geteiltes Wissen.
+- **Kosten-Sicherung:** Bei 400 MB Datenbankgröße hört das Mitlesen auf (kostenloser Tarif: 500 MB);
+  sehr lange Dokumente werden bei 400.000 Zeichen gekappt.
+- **Nicht lesbar:** Videos, Bilder (z. B. eingescannte Schaltpläne) und alte .doc-Dateien.
+
+Technik: Edge Function `supabase/functions/stapler-bibliothek` und Tabellen `stapler_bib_*` im
+Projekt „Stapler-Akademie“ (nur über den Dienst erreichbar, kein direkter Zugriff mit dem Anon Key).
+
 ## Gemeinsames Lernen
 
 Ist bereits eingerichtet: Die App speichert alle Lernschritte in der Tabelle `stapler_events` im

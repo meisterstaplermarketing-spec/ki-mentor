@@ -135,6 +135,7 @@
     .bubble.bot { background: var(--bg-card); border-radius: 18px 18px 18px 4px; box-shadow: var(--shadow); }
     .bubble.bot strong { color: var(--accent-strong); font-weight: 600; }
     .bubble.bot a { color: var(--blue); text-decoration: none; word-break: break-all; }
+    .bubble.sub { color: var(--text-secondary); font-size: 14px; }
 
     .meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 0.5px solid var(--separator); }
     .tag { background: var(--fill2); border-radius: 20px; padding: 2px 8px; font-size: 12px; color: var(--text-secondary); }
@@ -359,6 +360,15 @@
       <div class="section-label">Selbst gelernt</div>
       <div class="group" id="self-log"></div>
       <div class="section-hint">Lernt automatisch aus dem Gesprächsverlauf: Wer sofort umformuliert, war unzufrieden – wer weitergeht, zufrieden. Erfolgreiche Umformulierungen werden verknüpft, neue Begriffe gelernt und offene Fragen selbst gelöst.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Bibliothek (Noblelift-Serviceportal)</div>
+      <div class="group">
+        <div class="row"><div class="grow" id="bib-status">Status wird geladen …</div></div>
+        <div class="row"><div class="grow sub" id="bib-current"></div><button class="link" id="bib-btn" onclick="toggleIndexer()">Mitlesen starten</button></div>
+      </div>
+      <div class="section-hint">Rund 3.400 Service-Unterlagen (Fehlercodes, Anleitungen, Handbücher, Ersatzteillisten, Zertifikate) werden einmal ausgelesen und in der Bibliothek gespeichert – danach findet die KI darin Antworten. Am besten an einem PC im WLAN starten und die Seite offen lassen; anhalten und später weitermachen geht jederzeit. Mehrere Geräte können gleichzeitig mitlesen.</div>
     </div>
 
     <div class="section">
@@ -647,10 +657,274 @@ function sendMessage() {
 
   const turn = conversation.ask(text);
   const r = turn.result;
-  if (r.answered) renderCard(turn, r.best, r.confidence, r.related);
-  else renderUnknown(turn, r.related);
-  scrollToBottom();
   input.focus();
+  if (r.answered && r.confidence >= 0.5) {
+    renderCard(turn, r.best, r.confidence, r.related);
+    scrollToBottom();
+    return;
+  }
+  // Eigenes Wissen ist unsicher → zusätzlich in der Bibliothek nachsehen.
+  const typing = el('div', 'message bot', '<div class="bubble bot sub">🔎 Suche in der Bibliothek …</div>');
+  document.getElementById('chat-area').appendChild(typing);
+  scrollToBottom();
+  bibSearch(text).catch(() => null).then(lib => {
+    typing.remove();
+    if (r.answered) renderCard(turn, r.best, r.confidence, lib ? [] : r.related);
+    if (lib && (!r.answered || lib.confidence > r.confidence)) renderLibCard(turn, lib);
+    else if (!r.answered) renderUnknown(turn, r.related);
+    scrollToBottom();
+  });
+}
+
+// ── Bibliothek: Volltext der Service-Unterlagen (Supabase-Projekt „Stapler-Akademie“) ──
+const BIB_URL = 'https://pfmnlfnjophvoboxgavs.supabase.co/functions/v1/stapler-bibliothek';
+const BIB_CODE = 'GA-Q6DV-555T-CLYG';
+
+function bibUrl(params) {
+  const u = new URL(BIB_URL);
+  u.searchParams.set('code', BIB_CODE);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  return u;
+}
+
+// Deutsch → Englisch für Fachbegriffe: die Service-Unterlagen sind fast alle englisch.
+// Schlüssel sind Wortanfänge in normalisierter Schreibweise (ä→a, ö→o, ü→u, ß→ss).
+const FACHWORTE = [
+  ['ladegerat', 'charger'], ['ladezeit', 'charging time hours'], ['ladung', 'charge charging'], ['laden', 'charge charging'], ['lade', 'charge charging'],
+  ['batterie', 'battery'], ['akku', 'battery'], ['spannung', 'voltage'], ['strom', 'current'], ['sicherung', 'fuse'],
+  ['fehlercode', 'fault code error code'], ['fehler', 'fault error alarm'], ['storung', 'fault error'], ['warnung', 'warning alarm'],
+  ['bremse', 'brake'], ['lenkung', 'steering'], ['hydraulik', 'hydraulic'], ['pumpe', 'pump'], ['ventil', 'valve'],
+  ['zylinder', 'cylinder'], ['motor', 'motor'], ['fahrmotor', 'drive motor traction motor'], ['hubmotor', 'lift motor pump motor'],
+  ['uberhitz', 'overheating overtemperature'], ['temperatur', 'temperature'], ['steuerung', 'controller control'],
+  ['anzeige', 'display indicator'], ['display', 'display'], ['schalter', 'switch'], ['sensor', 'sensor'], ['kabel', 'cable wiring'],
+  ['hubhohe', 'lift height'], ['heben', 'lift lifting'], ['senken', 'lowering'], ['neigen', 'tilt'], ['gabel', 'fork'],
+  ['mast', 'mast'], ['kette', 'chain'], ['rad', 'wheel'], ['reifen', 'tyre tire wheel'], ['lager', 'bearing'],
+  ['ol', 'oil'], ['schmier', 'lubrication grease'], ['wartung', 'maintenance service'], ['inspektion', 'inspection'],
+  ['ersatzteil', 'spare parts'], ['teilenummer', 'part number'], ['anleitung', 'manual instruction'], ['handbuch', 'manual'],
+  ['schaltplan', 'circuit diagram wiring'], ['notaus', 'emergency stop'], ['not aus', 'emergency stop'], ['hupe', 'horn'],
+  ['licht', 'light lamp'], ['sitz', 'seat'], ['geschwindigkeit', 'speed'], ['drehmoment', 'torque'], ['gewicht', 'weight'],
+  ['tragfahigkeit', 'capacity load'], ['last', 'load'], ['zertifikat', 'certificate'], ['prufbericht', 'test report'],
+  ['dauer', 'time hours'], ['wie lange', 'time hours'], ['austausch', 'replace replacement'], ['wechsel', 'replace'],
+  ['einstell', 'adjust adjustment setting'], ['kalibr', 'calibration'], ['reset', 'reset'], ['zurucksetz', 'reset'],
+];
+
+/** Ergänzt eine deutsche Frage um englische Fachbegriffe (für Suche und Bewertung in der Bibliothek). */
+function bibQuery(question) {
+  const norm = StaplerEngine.normalize(question).replace(/\s+/g, ' ');
+  const extra = new Set();
+  for (const [de, en] of FACHWORTE) {
+    if (de.includes(' ') ? norm.includes(de) : norm.split(' ').some(w => w.startsWith(de))) extra.add(en);
+  }
+  return extra.size ? `${question} ${[...extra].join(' ')}` : question;
+}
+
+/** Ausschnitt rund um den ersten Treffer der Frage-Begriffe. */
+function excerpt(text, question, len = 650) {
+  const body = text.replace(/^[^:]{0,80}:\s*/, '');
+  const words = StaplerEngine.normalize(question).split(/\s+/).filter(w => w.length >= 3);
+  const low = StaplerEngine.normalize(body);
+  let pos = -1;
+  for (const w of words) { const i = low.indexOf(w); if (i >= 0 && (pos < 0 || i < pos)) pos = i; }
+  const start = Math.max(0, pos - 200);
+  return (start > 0 ? '…' : '') + body.slice(start, start + len).trim() + (start + len < body.length ? ' …' : '');
+}
+
+async function bibSearch(question) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const query = bibQuery(question);
+    const res = await fetch(bibUrl({ aktion: 'suche', q: query, n: 25 }), { signal: ctrl.signal });
+    if (!res.ok) return null;
+    const { treffer } = await res.json();
+    if (!treffer || !treffer.length) return null;
+    // Die Treffer der Datenbank mit der eigenen Engine nachbewerten (Synonyme, Abdeckung, Tippfehler).
+    const pool = treffer.map((t, i) => ({
+      id: `bib${i}`, question: t.title, answer: t.text, category: 'Bibliothek', source: t.title,
+      keywords: [t.model || '', t.typ || ''],
+    }));
+    const r = new StaplerEngine(pool, { minScore: 1.2 }).ask(query);
+    if (!r.answered) return null;
+    const t = treffer[Number(r.best.id.slice(3))];
+    const ref = `📄 ${t.title}${t.page ? ` (Seite ${t.page})` : ''}\n${t.url}`;
+    return {
+      confidence: r.confidence * 0.9,
+      card: { id: r.best.id, question: t.title, category: 'Bibliothek', source: t.typ || 'Service-Unterlage', origin: 'bibliothek',
+              answer: `${excerpt(t.text, query)}\n\n${ref}` },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function renderLibCard(turn, lib) {
+  const card = lib.card;
+  const wrap = el('div', 'message bot');
+  const pct = Math.round(lib.confidence * 100);
+  const bubble = el('div', 'bubble bot', format(card.answer));
+  const meta = el('div', 'meta');
+  meta.appendChild(el('span', 'tag', '📚 Bibliothek'));
+  meta.appendChild(el('span', 'tag', esc(card.source)));
+  meta.appendChild(el('span', 'tag', `Sicherheit ${pct} %`));
+  bubble.appendChild(meta);
+  bubble.appendChild(el('div', 'conf' + (pct < 35 ? ' low' : pct < 60 ? ' mid' : ''), `<div style="width:${pct}%"></div>`));
+  wrap.appendChild(bubble);
+  const actions = el('div', 'actions');
+  const up = el('button', 'act', '👍 Hilfreich – merken');
+  const down = el('button', 'act', '👎 Passt nicht');
+  const fix = el('button', 'act', '✏️ Korrigieren');
+  up.onclick = () => {
+    if (up.classList.contains('done')) return;
+    // Bestätigte Bibliotheks-Antworten werden festes, geteiltes Wissen.
+    record(ki.teach({ question: turn.question, answer: card.answer, category: 'Bibliothek', source: card.question }));
+    up.classList.add('done'); up.textContent = '✓ Gemerkt'; down.remove();
+  };
+  down.onclick = () => {
+    if (down.classList.contains('done')) return;
+    record(ki.noteOpen(turn.question));
+    down.classList.add('done'); down.textContent = '✓ Notiert'; up.remove();
+    fix.classList.add('primary');
+  };
+  fix.onclick = () => openTeach({ question: turn.question });
+  actions.append(up, down, fix);
+  wrap.appendChild(actions);
+  document.getElementById('chat-area').appendChild(wrap);
+}
+
+// ── Mitlesen: Dateien auslesen und in der Bibliothek speichern ──
+const indexer = { running: false, done: 0, current: '', status: null, wakeLock: null };
+const scripts = {};
+function loadScript(src) {
+  if (!scripts[src]) {
+    scripts[src] = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = src;
+      sc.onload = resolve;
+      sc.onerror = () => { delete scripts[src]; reject(new Error('Lesehilfe konnte nicht geladen werden')); };
+      document.head.appendChild(sc);
+    });
+  }
+  return scripts[src];
+}
+
+/** Text in Abschnitte von ca. 1.500 Zeichen teilen (an Wortgrenzen). */
+function chunkText(text, page, parts) {
+  for (const piece of String(text).replace(/\s+/g, ' ').trim().match(/.{1,1500}(\s|$)|\S+/g) || []) {
+    if (piece.trim().length >= 20) parts.push({ page, text: piece.trim() });
+  }
+}
+
+const MAX_DOC_CHARS = 400000;
+const partsLength = parts => parts.reduce((n, p) => n + p.text.length, 0);
+
+async function pdfParts(buf) {
+  const lib = await loadPdfLib();
+  const pdf = await lib.getDocument({ data: buf }).promise;
+  const parts = [];
+  try {
+    for (let i = 1; i <= pdf.numPages && partsLength(parts) < MAX_DOC_CHARS; i++) {
+      const content = await (await pdf.getPage(i)).getTextContent();
+      chunkText(content.items.map(it => it.str).join(' '), i, parts);
+    }
+  } finally {
+    pdf.destroy();
+  }
+  return parts;
+}
+
+async function sheetParts(buf) {
+  await loadScript('vendor/sheetjs/xlsx.full.min.js');
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+  const parts = [];
+  wb.SheetNames.forEach((name, i) => {
+    if (partsLength(parts) >= MAX_DOC_CHARS) return;
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name], { FS: ' | ', blankrows: false });
+    chunkText(`${name}: ${csv.replace(/(\s*\|\s*)+\n/g, '\n').replace(/\n/g, ' ; ')}`, i + 1, parts);
+  });
+  return parts;
+}
+
+async function docxParts(buf) {
+  await loadScript('vendor/jszip/jszip.min.js');
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file('word/document.xml').async('string');
+  const text = new DOMParser().parseFromString(xml.replace(/<\/w:p>/g, '</w:p>\n'), 'application/xml').documentElement.textContent;
+  const parts = [];
+  chunkText(text, 1, parts);
+  return parts;
+}
+
+async function extractParts(d) {
+  const res = await fetch(d.datei);
+  if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
+  const buf = await res.arrayBuffer();
+  if (d.ext === 'pdf') return pdfParts(buf);
+  if (d.ext === 'xlsx' || d.ext === 'xls') return sheetParts(buf);
+  if (d.ext === 'docx') return docxParts(buf);
+  throw new Error('Format nicht unterstützt');
+}
+
+async function loadBibStatus() {
+  try {
+    const res = await fetch(bibUrl({ aktion: 'status' }));
+    if (res.ok) indexer.status = await res.json();
+  } catch (e) { /* offline */ }
+  renderBib();
+}
+
+function renderBib() {
+  const st = indexer.status;
+  const statusEl = document.getElementById('bib-status');
+  if (!statusEl) return;
+  statusEl.innerHTML = st
+    ? `${(st.fertig + st.leer).toLocaleString('de-DE')} von ${st.gesamt.toLocaleString('de-DE')} Dateien gelesen` +
+      `<div class="sub">${st.db_mb} MB von ${st.max_mb} MB belegt${st.fehler ? ` · ${st.fehler} nicht lesbar` : ''}${st.voll ? ' · Speichergrenze erreicht' : ''}</div>`
+    : 'Bibliothek gerade nicht erreichbar';
+  document.getElementById('bib-current').textContent = indexer.running
+    ? `Lese: ${indexer.current || '…'} (${indexer.done} auf diesem Gerät)`
+    : indexer.done ? `${indexer.done} Dateien auf diesem Gerät gelesen` : '';
+  document.getElementById('bib-btn').textContent = indexer.running ? 'Anhalten' : 'Mitlesen starten';
+}
+
+function toggleIndexer() {
+  if (indexer.running) { indexer.running = false; renderBib(); return; }
+  runIndexer();
+}
+
+async function runIndexer() {
+  indexer.running = true;
+  try { indexer.wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) { /* nicht verfügbar */ }
+  renderBib();
+  try {
+    while (indexer.running) {
+      const res = await fetch(bibUrl({ aktion: 'naechste', n: 2 }));
+      if (!res.ok) throw new Error(`Bibliothek: HTTP ${res.status}`);
+      const data = await res.json();
+      indexer.status = data.status;
+      if (data.voll) { toast('Die Bibliothek hat ihre Speichergrenze erreicht.'); break; }
+      if (!data.dateien.length) { toast('Alle Dateien sind gelesen 🎉'); break; }
+      for (const d of data.dateien) {
+        if (!indexer.running) break; // reservierte Datei wird nach 20 Minuten wieder freigegeben
+        indexer.current = d.title;
+        renderBib();
+        let body;
+        try { body = { id: d.id, parts: await extractParts(d) }; }
+        catch (e) { body = { id: d.id, fehler: e.message || String(e) }; }
+        const save = await fetch(bibUrl({ aktion: 'speichern' }), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        if (save.status === 507) { toast('Die Bibliothek hat ihre Speichergrenze erreicht.'); indexer.running = false; break; }
+        indexer.done++;
+      }
+    }
+  } catch (e) {
+    toast('Mitlesen unterbrochen: ' + e.message);
+  } finally {
+    indexer.running = false;
+    indexer.current = '';
+    try { await indexer.wakeLock?.release(); } catch (e) {}
+    loadBibStatus();
+  }
 }
 
 // ── Beibringen ──
@@ -1017,7 +1291,7 @@ function resetLocal() {
 
 // ── Sheets & Toast ──
 function openSheet(id) {
-  if (id === 'learn-sheet') renderLearn();
+  if (id === 'learn-sheet') { renderLearn(); loadBibStatus(); }
   document.getElementById(id).classList.add('open');
 }
 function closeSheet(id) { document.getElementById(id).classList.remove('open'); }

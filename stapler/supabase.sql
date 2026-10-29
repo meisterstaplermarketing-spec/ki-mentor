@@ -1,12 +1,12 @@
 -- Gemeinsames Lernen für die Stapler-KI (optional).
 -- Im Supabase-Dashboard unter "SQL Editor" ausführen.
--- Gespeichert werden nur Lern-Ereignisse (Feedback, neues Wissen, offene Fragen) –
+-- Gespeichert werden nur Lern-Ereignisse (Feedback, Gesprächssignale, neues Wissen, Dokumente, offene Fragen) –
 -- es wird kein externer KI-Dienst verwendet.
 
 create table if not exists public.stapler_events (
   id         text primary key,
   ts         bigint not null,
-  type       text   not null check (type in ('feedback', 'teach', 'forget', 'open', 'dismiss')),
+  type       text   not null,  -- feedback, implicit, alias, teach, document, forget, open, dismiss
   event      jsonb  not null,
   created_at timestamptz not null default now()
 );

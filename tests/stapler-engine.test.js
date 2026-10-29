@@ -45,6 +45,8 @@ for (const [q, want] of cases) {
 // Unbekanntes wird nicht geraten, sondern als offene Frage gemerkt.
 const unknown = ki.ask('Wie ist das Wetter morgen in Hamburg?');
 assert(!unknown.answered && unknown.unsure, 'Wetterfrage sollte nicht beantwortet werden');
+// Unbekanntes Fachwort + Allerweltswörter → nicht raten.
+assert(!ki.ask('Wie lasse ich die Last mit dem Notablass ab?').answered, 'Unbekanntes Fachwort wurde geraten');
 ki.noteOpen('Wie ist das Wetter morgen in Hamburg?');
 ki.noteOpen('wetter morgen hamburg');
 assert.strictEqual(ki.openQuestions().length, 1);
@@ -86,6 +88,69 @@ assert.strictEqual(ki2.ask(q2).best.id, target);
 const id = learned.best.id;
 ki2.forget(id);
 assert(!ki2.ask('Öffnungszeiten').answered || ki2.ask('Öffnungszeiten').best.id !== id);
+
+// ── Selbstständiges Lernen ──
+{
+  const k = new StaplerEngine(WISSEN);
+  const events = [];
+  const chat = () => new StaplerEngine.Conversation(k, ev => events.push(ev));
+  let t = 1e12;
+
+  // 1) Unbekannte Formulierung → Umformulierung findet die Antwort → Nutzer geht weiter.
+  const c = chat();
+  const fail = c.ask('Wann muss die Karre zum Doc?', t);
+  assert(!fail.result.answered, 'Slang-Frage sollte zunächst unbekannt sein');
+  const ok = c.ask('Wie oft muss der Stapler zur UVV-Prüfung?', t += 20000);
+  assert.strictEqual(ok.result.best.id, 'pruef-uvv');
+  c.ask('Was kostet ein neuer Stapler?', t += 30000);
+  assert(events.some(e => e.type === 'alias'), 'Umformulierung wurde nicht verknüpft');
+  const again = k.ask('Wann muss die Karre zum Doc?');
+  assert(again.answered && again.best.id === 'pruef-uvv', 'Verknüpfte Formulierung wird nicht erkannt');
+  assert(!k.openQuestions().some(o => o.text.includes('Karre')), 'Gelöste Frage bleibt offen');
+
+  // 2) Sofortiges Umformulieren einer beantworteten Frage → schwaches Nein für die Antwort.
+  const c2 = chat();
+  const first = c2.ask('Stapler Batterie Wasser', t += 600000);
+  c2.ask('Batterie Wasser nachfüllen wann', t += 15000);
+  assert(events.some(e => e.type === 'implicit' && e.value < 0 && e.entryId === first.result.best.id));
+
+  // 3) Eigene Synonyme: „Karre“ führte zweimal erst über „Stapler“ zur Antwort (Fall 1 + dieses Gespräch).
+  assert.strictEqual(k._learnedSynonym('karr'), null, 'Ein Beleg allein darf noch kein Synonym ergeben');
+  const c3 = chat();
+  assert(!c3.ask('Die Karre macht Mucken', t += 600000).result.answered);
+  c3.ask('Mein Stapler hat ein Problem, er fährt nicht', t += 10000);
+  c3.end();
+  assert.strictEqual(k._learnedSynonym('karr'), 'stapl', 'Synonym „Karre“ ≈ „Stapler“ nicht gelernt');
+  assert(k.selfLearnLog().some(l => l.kind === 'synonym'));
+
+  // 4) Dokumente lesen + offene Fragen selbst lösen.
+  k.noteOpen('Wie schnell darf man in Halle 3 fahren?');
+  k.ingest({
+    title: 'Hallenordnung Werk Nord',
+    text: 'Hallenordnung\n\nIn Halle 3 gilt für alle Flurförderzeuge eine Höchstgeschwindigkeit von 6 km/h. ' +
+      'An Kreuzungen ist Schrittgeschwindigkeit zu fahren und zu hupen.\n\nLadestation\n\n' +
+      'Die Ladestation für Staplerbatterien befindet sich am Tor 5. Dort ist Rauchen verboten und die Lüftung muss eingeschaltet sein.',
+  });
+  const doc = k.ask('Wie schnell darf ich in Halle 3 fahren? Höchstgeschwindigkeit');
+  assert(doc.answered && doc.best.origin === 'dokument' && /6 km\/h/.test(doc.best.answer), 'Dokumentwissen nicht gefunden');
+  assert(!k.openQuestions().some(o => o.text.includes('Halle 3')), 'Offene Frage wurde nicht selbst gelöst');
+  assert(k.selfLearnLog().some(l => l.kind === 'gelöst'));
+  assert.strictEqual(k.summary().documents, 1);
+
+  // 5) Alles selbst Gelernte lässt sich identisch auf einem anderen Gerät wiederherstellen.
+  const k2 = new StaplerEngine(WISSEN);
+  k2.importState(JSON.parse(JSON.stringify(k.exportState())));
+  assert.deepStrictEqual(k2.summary(), k.summary());
+  assert.strictEqual(k2._learnedSynonym('karr'), 'stapl');
+  assert.strictEqual(k2.ask('Wann muss die Karre zum Doc?').best.id, 'pruef-uvv');
+
+  // Dokument wieder vergessen.
+  k2.forget(k2.documentList()[0].id);
+  assert.strictEqual(k2.summary().documents, 0);
+  const gone = k2.ask('Höchstgeschwindigkeit Halle 3');
+  assert(!gone.answered || gone.best.origin !== 'dokument');
+  console.log('✔ Selbstständiges Lernen: Verknüpfen, Umformulieren, Synonyme, Dokumente, offene Fragen');
+}
 
 if (fails) { console.error(`\n${fails} Erkennungsfehler`); process.exit(1); }
 console.log('\nAlle Tests bestanden.');

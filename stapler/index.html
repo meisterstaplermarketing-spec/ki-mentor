@@ -271,7 +271,7 @@
   <div id="welcome">
     <div class="welcome-icon">🚜</div>
     <div class="welcome-title">Deine Gabelstapler-KI</div>
-    <div class="welcome-sub">Läuft komplett eigenständig – ohne Fremdanbieter, ohne Token-Kosten. Und sie lernt mit jeder Frage dazu.</div>
+    <div class="welcome-sub">Läuft komplett eigenständig – ohne Fremdanbieter, ohne Token-Kosten. Sie lernt selbstständig aus jedem Gespräch und jedem Dokument dazu.</div>
     <div class="suggestions">
       <button class="suggestion-chip" onclick="ask('Brauche ich einen Staplerschein?')">Brauche ich einen Staplerschein?</button>
       <button class="suggestion-chip" onclick="ask('Wie oft muss die UVV-Prüfung gemacht werden?')">Wie oft muss die UVV-Prüfung gemacht werden?</button>
@@ -322,6 +322,27 @@
   </div>
 </div>
 
+<!-- Dokument als Text einfügen -->
+<div class="overlay" id="doc-sheet" onclick="closeIfOutside(event)">
+  <div class="panel">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Text lesen lassen</div>
+      <button class="sheet-close" onclick="closeSheet('doc-sheet')">✕</button>
+    </div>
+    <div class="section">
+      <div class="section-label">Titel</div>
+      <div class="group"><div class="row"><input id="d-title" placeholder="z. B. Betriebsanleitung Linde E20" /></div></div>
+    </div>
+    <div class="section">
+      <div class="section-label">Text</div>
+      <div class="group"><div class="row"><textarea id="d-text" style="min-height:220px" placeholder="Betriebsanleitung, Hallenordnung, Datenblatt, Schulungsunterlage … hier einfügen"></textarea></div></div>
+      <div class="section-hint">Die KI zerlegt den Text in Abschnitte und kann danach Fragen dazu beantworten.</div>
+    </div>
+    <button class="btn" onclick="saveDocText()">Lesen</button>
+  </div>
+</div>
+
 <!-- Lernen & Wissen -->
 <div class="overlay" id="learn-sheet" onclick="closeIfOutside(event)">
   <div class="panel">
@@ -332,6 +353,23 @@
     </div>
 
     <div class="section"><div class="stats" id="stats"></div></div>
+
+    <div class="section">
+      <div class="section-label">Selbst gelernt</div>
+      <div class="group" id="self-log"></div>
+      <div class="section-hint">Lernt automatisch aus dem Gesprächsverlauf: Wer sofort umformuliert, war unzufrieden – wer weitergeht, zufrieden. Erfolgreiche Umformulierungen werden verknüpft, neue Begriffe gelernt und offene Fragen selbst gelöst.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Dokumente lesen</div>
+      <div class="group" id="doc-list"></div>
+      <div class="group" style="margin-top:8px">
+        <div class="row"><button class="link" onclick="document.getElementById('doc-file').click()">+ PDF oder Textdatei hochladen</button>
+          <input type="file" id="doc-file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple style="display:none" onchange="readDocFiles(event)" /></div>
+        <div class="row"><button class="link" onclick="openDocText()">+ Text einfügen</button></div>
+      </div>
+      <div class="section-hint">Betriebsanleitungen, Datenblätter, Hallenordnungen, Schulungsunterlagen – alles, was die KI liest, kann sie danach beantworten.</div>
+    </div>
 
     <div class="section">
       <div class="section-label">Offene Fragen</div>
@@ -377,6 +415,7 @@
 const STATE_KEY = 'stapler_ki_state';
 const DB_KEY = 'stapler_ki_db';
 const ki = new StaplerEngine(STAPLER_WISSEN);
+const conversation = new StaplerEngine.Conversation(ki, ev => record(ev));
 let db = null;              // { url, key }
 let pending = [];           // noch nicht synchronisierte Events
 let teachContext = null;    // { replaces } bei Korrekturen
@@ -495,7 +534,7 @@ function el(tag, cls, html) {
   return e;
 }
 
-function renderCard(question, card, confidence, related) {
+function renderCard(turn, card, confidence, related) {
   const wrap = el('div', 'message bot');
   const bubble = el('div', 'bubble bot', format(card.answer));
   const meta = el('div', 'meta');
@@ -519,36 +558,36 @@ function renderCard(question, card, confidence, related) {
   const fix = el('button', 'act', '✏️ Korrigieren');
   up.onclick = () => {
     if (up.classList.contains('done')) return;
-    record(ki.feedback(question, card.id, +1));
+    conversation.feedback(turn, +1);
     up.classList.add('done'); up.textContent = '✓ Danke, gemerkt'; down.remove();
   };
   down.onclick = () => {
     if (down.classList.contains('done')) return;
-    record(ki.feedback(question, card.id, -1));
-    record(ki.noteOpen(question));
+    conversation.feedback(turn, -1);
     down.classList.add('done'); down.textContent = '✓ Notiert'; up.remove();
     fix.classList.add('primary');
   };
-  fix.onclick = () => openTeach({ question, answer: card.answer, category: card.category, replaces: card.id });
+  fix.onclick = () => openTeach({ question: turn.question, answer: card.origin === 'dokument' ? '' : card.answer, category: card.category, replaces: card.id });
   actions.append(up, down, fix);
   wrap.appendChild(actions);
 
-  if (related && related.length) wrap.appendChild(renderRelated(question, related, 'Siehe auch'));
+  if (related && related.length) wrap.appendChild(renderRelated(turn, related, 'Siehe auch'));
   document.getElementById('chat-area').appendChild(wrap);
 }
 
-function renderRelated(question, related, label) {
+function renderRelated(turn, related, label) {
   const box = el('div', 'related');
   box.appendChild(el('div', 'related-label', label));
   related.forEach(r => {
     const chip = el('button', 'suggestion-chip', esc(r.question));
-    chip.onclick = () => { renderCard(question, r, null, []); scrollToBottom(); };
+    chip.onclick = () => { renderCard(conversation.choose(turn, r), r, null, []); scrollToBottom(); };
     box.appendChild(chip);
   });
   return box;
 }
 
-function renderUnknown(question, related) {
+function renderUnknown(turn, related) {
+  const question = turn.question;
   const wrap = el('div', 'message bot');
   wrap.appendChild(el('div', 'bubble bot',
     'Dazu weiß ich noch nichts Sicheres – und ich rate nicht, wenn es um Stapler geht.<br><br>' +
@@ -558,7 +597,7 @@ function renderUnknown(question, related) {
   teach.onclick = () => openTeach({ question });
   actions.appendChild(teach);
   wrap.appendChild(actions);
-  if (related.length) wrap.appendChild(renderRelated(question, related, 'Meintest du vielleicht:'));
+  if (related.length) wrap.appendChild(renderRelated(turn, related, 'Meintest du vielleicht:'));
   document.getElementById('chat-area').appendChild(wrap);
 }
 
@@ -576,10 +615,10 @@ function sendMessage() {
   input.style.height = 'auto';
   addUser(text);
 
-  const r = ki.ask(text);
-  if (r.unsure) record(ki.noteOpen(text));
-  if (r.answered) renderCard(text, r.best, r.confidence, r.related);
-  else renderUnknown(text, r.related);
+  const turn = conversation.ask(text);
+  const r = turn.result;
+  if (r.answered) renderCard(turn, r.best, r.confidence, r.related);
+  else renderUnknown(turn, r.related);
   scrollToBottom();
   input.focus();
 }
@@ -614,12 +653,103 @@ function saveTeach() {
   toast('Gelernt! Ich kann das jetzt beantworten.');
 }
 
+// ── Dokumente lesen ──
+function learnDocument(title, text) {
+  try {
+    const ev = ki.ingest({ title, text });
+    record(ev);
+    toast(`„${title}“ gelesen – ${ev.doc.passages.length} ${ev.doc.passages.length === 1 ? 'Abschnitt' : 'Abschnitte'} gelernt`);
+  } catch (e) {
+    toast(`${title}: ${e.message}`);
+  }
+}
+
+function openDocText() {
+  document.getElementById('d-title').value = '';
+  document.getElementById('d-text').value = '';
+  closeSheet('learn-sheet');
+  openSheet('doc-sheet');
+}
+
+function saveDocText() {
+  const title = document.getElementById('d-title').value.trim() || 'Eingefügter Text';
+  const text = document.getElementById('d-text').value.trim();
+  if (!text) { toast('Bitte Text einfügen'); return; }
+  closeSheet('doc-sheet');
+  learnDocument(title, text);
+}
+
+let pdfLib = null;
+function loadPdfLib() {
+  if (pdfLib) return pdfLib;
+  pdfLib = new Promise((resolve, reject) => {
+    const base = 'vendor/pdfjs/';  // lokal mitgeliefert – kein fremder Server nötig
+    const sc = document.createElement('script');
+    sc.src = base + 'pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.js'; resolve(window.pdfjsLib); };
+    sc.onerror = () => { pdfLib = null; reject(new Error('PDF-Leser konnte nicht geladen werden')); };
+    document.head.appendChild(sc);
+  });
+  return pdfLib;
+}
+
+async function pdfToText(file) {
+  const lib = await loadPdfLib();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const content = await (await pdf.getPage(i)).getTextContent();
+    pages.push(content.items.map(it => it.str + (it.hasEOL ? '\n' : ' ')).join(''));
+  }
+  return pages.join('\n\n');
+}
+
+async function readDocFiles(e) {
+  const files = [...e.target.files];
+  e.target.value = '';
+  for (const file of files) {
+    const title = file.name.replace(/\.[^.]+$/, '');
+    try {
+      toast(`Lese „${title}“ …`);
+      const text = /\.pdf$/i.test(file.name) ? await pdfToText(file) : await file.text();
+      learnDocument(title, text);
+    } catch (err) {
+      toast(`${title}: ${err.message}`);
+    }
+  }
+  renderLearn();
+}
+
 // ── Lern-Bereich ──
 function renderLearn() {
   const s = ki.summary();
   document.getElementById('stats').innerHTML = [
-    [s.entries, 'Wissen'], [s.learned, 'Gelernt'], [s.feedback, 'Feedback'], [s.open, 'Offen'],
+    [s.entries, 'Wissen'], [s.self, 'Selbst gelernt'], [s.documents, 'Dokumente'], [s.open, 'Offen'],
   ].map(([n, l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+
+  const log = ki.selfLearnLog();
+  const logEl = document.getElementById('self-log');
+  const icons = { 'verknüpft': '🔗', 'synonym': '🧩', 'gelesen': '📖', 'gelöst': '✅' };
+  logEl.innerHTML = log.length ? '' : `<div class="empty">${s.self ? `${s.self} Signale aus Gesprächen verarbeitet.` : 'Noch nichts – stell einfach Fragen.'}</div>`;
+  log.slice(0, 15).forEach(l => {
+    logEl.appendChild(el('div', 'row', `<span>${icons[l.kind] || '✦'}</span><div class="grow">${esc(l.text)}<div class="sub">${new Date(l.ts).toLocaleString('de-DE')}</div></div>`));
+  });
+
+  const docs = ki.documentList();
+  const docEl = document.getElementById('doc-list');
+  docEl.innerHTML = docs.length ? '' : '<div class="empty">Noch keine Dokumente gelesen.</div>';
+  docs.forEach(d => {
+    const row = el('div', 'row');
+    row.appendChild(el('div', 'grow', `📄 ${esc(d.title)}<div class="sub">${d.passages} ${d.passages === 1 ? 'Abschnitt' : 'Abschnitte'}</div>`));
+    const del = el('button', 'link red', 'Löschen');
+    del.onclick = () => {
+      if (!confirm(`„${d.title}“ vergessen?`)) return;
+      record(ki.forget(d.id));
+      renderLearn();
+    };
+    row.appendChild(del);
+    docEl.appendChild(row);
+  });
 
   const open = ki.openQuestions();
   const openList = document.getElementById('open-list');
@@ -714,7 +844,11 @@ load();
 updateBadge();
 if (db) { setDbStatus('Verbinde …', true); sync(); }
 setInterval(() => { if (db) sync(); }, 60000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && db) sync(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) conversation.end();
+  else if (db) sync();
+});
+window.addEventListener('pagehide', () => conversation.end());
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>

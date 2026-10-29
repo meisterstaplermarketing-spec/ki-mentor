@@ -8,6 +8,9 @@
  *  - Lernschicht: Feedback verschiebt Gewichte zwischen Frage-Begriffen und Antworten,
  *    Korrekturen/neues Wissen werden als eigene Einträge aufgenommen,
  *    unbeantwortete Fragen werden gesammelt.
+ *  - Selbstständiges Lernen (Conversation): erkennt am Gesprächsverlauf, ob eine Antwort
+ *    gepasst hat, verknüpft erfolgreiche Umformulierungen, lernt eigene Synonyme,
+ *    liest Dokumente und löst offene Fragen selbst, sobald neues Wissen da ist.
  *  - Ereignis-Log (Event Sourcing): jeder Lernschritt ist ein Event und kann
  *    lokal oder über die eigene Datenbank zwischen allen Nutzern geteilt werden.
  *
@@ -26,7 +29,8 @@
     'vom von vor war waren was weil welche welchem welchen welcher welches wenn wer werde werden wie wieder will wir ' +
     'wird wo wurde zu zum zur zwar zwischen bitte mal gerne denn eigentlich genau ganz bzw usw etc' +
     ' welch wann warum wieso weshalb wozu womit worauf habt hast eure eurem euren eurer lauten lautet sag sagen' +
-    ' erklar erklare erklaren weisst wisst meinem meinen meiner unsere unserem unseren einfach kurz danke'
+    ' erklar erklare erklaren weisst wisst meinem meinen meiner unsere unserem unseren einfach kurz danke' +
+    ' darf durfen darfst soll sollen konnte mochte lass lasse lassen gemacht machen mach jemand jemanden'
   ).split(/\s+/));
 
   // Kanonische Begriffe: alle Varianten werden auf den ersten Begriff abgebildet.
@@ -77,6 +81,7 @@
       if (word.length <= 4) break;
       const before = word;
       for (const s of suffixes) {
+        if (s === 's' && word.endsWith('ss')) continue; // „Notablass“, „Anlass“ nicht kürzen
         if (word.endsWith(s) && word.length - s.length >= 3) { word = word.slice(0, -s.length); break; }
       }
       // Plural-n nur nach -el/-er (Gabeln, Staplern), nicht bei Wörtern wie „Schein“.
@@ -119,6 +124,60 @@
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+  function jaccard(a, b) {
+    const A = new Set(a), B = new Set(b);
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    A.forEach(t => { if (B.has(t)) inter++; });
+    return inter / (A.size + B.size - inter);
+  }
+
+  /** Zerlegt einen Dokumenttext in suchbare Abschnitte (je ca. 300–900 Zeichen). */
+  function splitDocument(text) {
+    const clean = String(text || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/-\n(?=[a-zäöüß])/g, '');
+    const blocks = clean.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const isHeading = line => line.length >= 3 && line.length <= 80 && !/[.:;,!?]$/.test(line) && /[A-Za-zÄÖÜäöü]/.test(line);
+    const passages = [];
+    let currentHeading = '';
+    let buf = '';
+    const flush = () => {
+      const body = buf.replace(/\s*\n\s*/g, ' ').trim();
+      buf = '';
+      if (body.length < 40) return;
+      const first = (body.match(/^.{20,140}?[.!?](\s|$)/) || [body.slice(0, 120)])[0].trim();
+      passages.push({ question: currentHeading || first, text: body });
+    };
+    const pushText = text => {
+      for (const sentence of text.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9•\-])/)) {
+        if (buf && buf.length + sentence.length > 900) flush();
+        buf += (buf ? ' ' : '') + sentence;
+      }
+    };
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      let prevEnded = true; // vorherige Zeile endete mit Satzzeichen bzw. Blockanfang
+      let text = '';
+      lines.forEach((line, i) => {
+        // Überschrift: kurze Zeile ohne Satzende nach einem abgeschlossenen Satz, gefolgt von Text
+        // (erkennt Zwischenüberschriften auch in PDFs ohne Leerzeilen).
+        const heading = prevEnded && isHeading(line) && line.length <= 60 && /^[A-ZÄÖÜ0-9]/.test(line) &&
+          (i < lines.length - 1 || lines.length === 1);
+        if (heading) {
+          if (text) { pushText(text); text = ''; }
+          flush();
+          currentHeading = line;
+        } else {
+          text += (text ? ' ' : '') + line;
+        }
+        prevEnded = heading || /[.!?:]$/.test(line);
+      });
+      if (text) pushText(text);
+      if (buf.length >= 300) flush();
+    }
+    flush();
+    return passages;
+  }
+
   class StaplerEngine {
     constructor(baseKnowledge, options = {}) {
       this.base = (baseKnowledge || []).map(e => ({ ...e, origin: 'basis' }));
@@ -132,6 +191,10 @@
       this.weights = {};       // entryId -> { term: gewicht }
       this.stats = {};         // entryId -> { up, down, shown }
       this.open = new Map();   // normalisierte Frage -> { text, count, last }
+      this.synonymVotes = {};  // unbekanntes Wort -> { bekanntes Wort: Anzahl Belege }
+      this.documents = new Map();
+      this.autoLog = [];       // was die KI selbstständig gelernt hat
+      this.autoCount = 0;
       this.events = [];
       this.eventIds = new Set();
       this._dirty = true;
@@ -144,7 +207,9 @@
       for (const e of this.entries.values()) {
         if (e.deleted) continue;
         // Frage & Stichwörter zählen doppelt, sie beschreiben die Absicht am besten.
-        const intent = [e.question, ...(e.alt || []), ...(e.keywords || [])].join(' ');
+        // Bei Dokumentabschnitten trägt auch der Anfang des Abschnitts die Absicht.
+        const lead = e.origin === 'dokument' ? e.answer.slice(0, 160) : '';
+        const intent = [e.question, lead, ...(e.alt || []), ...(e.keywords || [])].join(' ');
         const text = `${intent} ${intent} ${e.category || ''} ${e.answer}`;
         const terms = tokenize(text).concat(trigrams(intent));
         docs.push({ id: e.id, tf: counts(terms), len: terms.length });
@@ -177,7 +242,11 @@
         const covered = new Set();
         for (const [w, grams] of wordGrams) {
           if (d.tf.has(w)) covered.add(w);
-          else if (grams.length && grams.filter(g => d.tf.has(g)).length / grams.length >= 0.4) covered.add(w);
+          else if (grams.length) {
+            const shared = grams.filter(g => d.tf.has(g));
+            const inner = shared.filter(g => !g.includes(' ')).length;
+            if (shared.length / grams.length >= 0.4 && inner >= 2) covered.add(w); // Tippfehler
+          }
         }
         results.push({ id: d.id, score, covered });
       }
@@ -186,9 +255,24 @@
 
     // ---------- Fragen beantworten ----------
 
+    /** Selbst gelerntes Synonym für ein Wort, das im Wissen nicht vorkommt (ab 2 Belegen). */
+    _learnedSynonym(t) {
+      if (this._dirty) this._buildIndex();
+      if (this._index.df.has(t)) return null;
+      const votes = this.synonymVotes[t];
+      if (!votes) return null;
+      let best = null;
+      for (const [u, n] of Object.entries(votes)) {
+        if (n >= 2 && this._index.df.has(u) && (!best || n > votes[best])) best = u;
+      }
+      return best;
+    }
+
     ask(question) {
-      const words = tokenize(question);
+      const raw = tokenize(question);
+      const words = raw.map(t => this._learnedSynonym(t) || t);
       const uniq = [...new Set(words)];
+      const pairs = [...new Map(raw.map((t, i) => [t, words[i]])).entries()]; // [Originalwort, Suchwort]
       const terms = words.concat(trigrams(question));
       const scored = new Map(this._bm25(terms, uniq).map(r => [r.id, r]));
 
@@ -198,7 +282,10 @@
         if (!e || e.deleted) continue;
         let bonus = 0;
         const hit = [];
-        for (const t of uniq) if (w[t]) { bonus += w[t]; if (w[t] > 0) hit.push(t); }
+        for (const [t, mapped] of pairs) {
+          const v = w[t] || (mapped !== t ? w[mapped] : 0) || 0;
+          if (v) { bonus += v; if (v > 0) hit.push(mapped); }
+        }
         if (!bonus) continue;
         const r = scored.get(id) || { id, score: 0, covered: new Set() };
         r.score += bonus;
@@ -206,12 +293,20 @@
         scored.set(id, r);
       }
 
-      // Abdeckung (Anteil getroffener Frage-Begriffe) und Feedback als Prior.
+      // Abdeckung: Anteil getroffener Frage-Begriffe, gewichtet nach Seltenheit.
+      // Ein unbekanntes Fachwort zählt viel – fehlt es, wird lieber nicht geantwortet.
+      const { df, n } = this._index;
+      const rawIdf = d => Math.log(1 + (n - d + 0.5) / (d + 0.5));
+      // Unbekannte Wörter können Fachbegriffe oder Füllwörter sein → mittleres Gewicht.
+      const idf = t => (df.get(t) ? rawIdf(df.get(t)) : 0.6 * rawIdf(1));
+      const totalWeight = uniq.reduce((sum, t) => sum + idf(t), 0);
       const ranked = [...scored.values()]
         .map(({ id, score, covered }) => {
           const s = this.stats[id];
           const prior = s ? 1 + 0.08 * clamp(s.up - s.down, -5, 5) : 1;
-          const coverage = uniq.length ? covered.size / uniq.length : 0;
+          let hit = 0;
+          covered.forEach(t => { hit += idf(t); });
+          const coverage = totalWeight ? hit / totalWeight : 0;
           return { id, score: score * prior * (0.3 + 0.7 * coverage), coverage };
         })
         .filter(r => r.score > 0)
@@ -253,6 +348,30 @@
       };
     }
 
+    _log(ts, kind, text) {
+      this.autoLog.push({ ts, kind, text });
+      if (this.autoLog.length > 200) this.autoLog.shift();
+    }
+
+    /** Prüft offene Fragen erneut, sobald neues Wissen da ist, und hakt gelöste ab. */
+    _resolveOpen(newIds, ts) {
+      for (const [key, o] of [...this.open.entries()]) {
+        const r = this.ask(o.text);
+        if (r.answered && r.confidence >= 0.3 && newIds.has(r.best.id)) {
+          this.open.delete(key);
+          this._log(ts, 'gelöst', `Offene Frage selbst gelöst: „${o.text}“`);
+        }
+      }
+    }
+
+    _addWeights(entryId, question, delta) {
+      const w = this.weights[entryId] || (this.weights[entryId] = {});
+      for (const t of new Set(tokenize(question))) {
+        w[t] = clamp((w[t] || 0) + delta, -6, 6);
+        if (Math.abs(w[t]) < 1e-6) delete w[t];
+      }
+    }
+
     _openKey(question) {
       return [...new Set(tokenize(question))].sort().join(' ');
     }
@@ -278,6 +397,23 @@
       return this.apply({ type: 'forget', entryId });
     }
 
+    /** Indirektes Signal aus dem Gesprächsverlauf (schwächer als 👍/👎). */
+    implicit(question, entryId, value) {
+      return this.apply({ type: 'implicit', question, entryId, value: value > 0 ? 1 : -1 });
+    }
+
+    /** Eine erfolglose Formulierung führte über eine Umformulierung zur passenden Antwort. */
+    alias(question, entryId, via) {
+      return this.apply({ type: 'alias', question, entryId, via });
+    }
+
+    /** Liest ein Dokument (Betriebsanleitung, Datenblatt, Schulungsunterlage …) ein. */
+    ingest({ title, text, source }) {
+      const passages = splitDocument(text);
+      if (!passages.length) throw new Error('Im Dokument wurde kein verwertbarer Text gefunden');
+      return this.apply({ type: 'document', doc: { id: uid(), title: title || 'Dokument', source: source || title, passages } });
+    }
+
     /** Merkt sich eine Frage, die (noch) nicht sicher beantwortet werden konnte. */
     noteOpen(question) {
       return this.apply({ type: 'open', question });
@@ -298,13 +434,48 @@
         if (!e) return null;
         const st = this.stats[ev.entryId] || (this.stats[ev.entryId] = { up: 0, down: 0 });
         ev.value > 0 ? st.up++ : st.down++;
-        const w = this.weights[ev.entryId] || (this.weights[ev.entryId] = {});
-        const lr = this.options.learnRate;
-        for (const t of new Set(tokenize(ev.question))) {
-          w[t] = clamp((w[t] || 0) + ev.value * lr, -6, 6);
-          if (Math.abs(w[t]) < 1e-6) delete w[t];
-        }
+        this._addWeights(ev.entryId, ev.question, ev.value * this.options.learnRate);
         if (ev.value > 0) this.open.delete(this._openKey(ev.question));
+      } else if (ev.type === 'implicit') {
+        if (!this.entries.has(ev.entryId)) return null;
+        // Weitergehen ist ein schwaches Ja, sofortiges Umformulieren ein deutlicheres Nein.
+        this._addWeights(ev.entryId, ev.question, ev.value > 0 ? 0.15 : -0.3);
+        this.autoCount++;
+      } else if (ev.type === 'alias') {
+        const e = this.entries.get(ev.entryId);
+        if (!e) return null;
+        this._addWeights(ev.entryId, ev.question, 1.2);
+        // Wörter, die das Wissen nicht kennt, als mögliche Synonyme der erfolgreichen Formulierung vormerken.
+        if (this._dirty) this._buildIndex();
+        const failed = new Set(tokenize(ev.question));
+        const good = new Set(tokenize(ev.via || ''));
+        for (const t of failed) {
+          if (good.has(t) || this._index.df.has(t)) continue;
+          for (const u of good) {
+            if (failed.has(u) || !this._index.df.has(u)) continue;
+            const v = this.synonymVotes[t] || (this.synonymVotes[t] = {});
+            v[u] = (v[u] || 0) + 1;
+            if (v[u] === 2) this._log(ev.ts, 'synonym', `Neuer Begriff gelernt: „${t}“ ≈ „${u}“`);
+          }
+        }
+        this.open.delete(this._openKey(ev.question));
+        this.autoCount++;
+        this._log(ev.ts, 'verknüpft', `„${ev.question}“ → ${e.question}`);
+      } else if (ev.type === 'document') {
+        const doc = ev.doc;
+        const ids = new Set();
+        doc.passages.forEach((p, i) => {
+          const id = `${doc.id}#${i}`;
+          ids.add(id);
+          this.entries.set(id, {
+            id, docId: doc.id, question: p.question, answer: p.text,
+            category: 'Dokument', source: doc.source || doc.title, origin: 'dokument', keywords: [],
+          });
+        });
+        this.documents.set(doc.id, { id: doc.id, title: doc.title, passages: doc.passages.length, ts: ev.ts });
+        this._dirty = true;
+        this._log(ev.ts, 'gelesen', `Dokument gelesen: „${doc.title}“ (${doc.passages.length} ${doc.passages.length === 1 ? 'Abschnitt' : 'Abschnitte'})`);
+        this._resolveOpen(ids, ev.ts);
       } else if (ev.type === 'teach') {
         const entry = { ...ev.entry, origin: 'gelernt', keywords: [...(ev.entry.keywords || [])] };
         this.entries.set(entry.id, entry);
@@ -317,6 +488,7 @@
         }
         this.open.delete(this._openKey(entry.question));
         this._dirty = true;
+        this._resolveOpen(new Set([entry.id]), ev.ts);
       } else if (ev.type === 'open') {
         const key = this._openKey(ev.question);
         if (!key) return null;
@@ -327,6 +499,11 @@
       } else if (ev.type === 'forget') {
         const e = this.entries.get(ev.entryId);
         if (e) { e.deleted = true; this._dirty = true; }
+        if (this.documents.has(ev.entryId)) {
+          for (const x of this.entries.values()) if (x.docId === ev.entryId) x.deleted = true;
+          this.documents.delete(ev.entryId);
+          this._dirty = true;
+        }
       } else {
         return null;
       }
@@ -349,7 +526,10 @@
         if (e.origin === 'gelernt') learned++;
       }
       const fb = Object.values(this.stats).reduce((s, x) => s + x.up + x.down, 0);
-      return { entries: active, learned, feedback: fb, open: this.open.size, events: this.events.length };
+      return {
+        entries: active, learned, feedback: fb, open: this.open.size, events: this.events.length,
+        documents: this.documents.size, self: this.autoCount,
+      };
     }
 
     exportState() {
@@ -368,10 +548,94 @@
     learnedEntries() {
       return [...this.entries.values()].filter(e => e.origin === 'gelernt' && !e.deleted);
     }
+
+    documentList() {
+      return [...this.documents.values()].sort((a, b) => b.ts - a.ts);
+    }
+
+    selfLearnLog() {
+      return this.autoLog.slice().reverse();
+    }
+  }
+
+  /*
+   * Verfolgt den Gesprächsverlauf und erzeugt daraus Lernschritte – ohne dass jemand bewerten muss.
+   *  - Sofortiges Umformulieren  → die letzte Antwort hat nicht gepasst.
+   *  - Weiter zum nächsten Thema → die letzte Antwort hat gepasst.
+   *  - Erst erfolglos, dann mit anderen Worten erfolgreich → beide Formulierungen werden verknüpft.
+   * Jeder erzeugte Lernschritt wird an onEvent übergeben (zum Speichern/Teilen).
+   */
+  class Conversation {
+    constructor(engine, onEvent = () => {}, { rephraseMs = 120000 } = {}) {
+      this.ki = engine;
+      this.onEvent = onEvent;
+      this.rephraseMs = rephraseMs;
+      this.last = null;
+    }
+
+    _emit(ev) { if (ev) this.onEvent(ev); }
+
+    ask(question, now = Date.now()) {
+      const result = this.ki.ask(question);
+      const turn = { question, result, ts: now, feedback: 0, failed: [] };
+      const prev = this.last;
+      if (prev && !prev.closed) {
+        prev.closed = true;
+        const quick = now - prev.ts < this.rephraseMs;
+        const prevOk = prev.result.answered && prev.feedback >= 0;
+        const similar = jaccard(tokenize(prev.question), tokenize(question)) >= 0.25;
+        if (quick && (similar || !prevOk)) {
+          if (prev.result.answered && prev.feedback === 0) this._emit(this.ki.implicit(prev.question, prev.result.best.id, -1));
+          turn.failed = [...new Set([...prev.failed, prev.question])].slice(-3);
+        } else {
+          this._accept(prev);
+        }
+      }
+      if (result.unsure) this._emit(this.ki.noteOpen(question));
+      this.last = turn;
+      return turn;
+    }
+
+    /** Nutzer wählt einen vorgeschlagenen Eintrag („Siehe auch“ / „Meintest du“). */
+    choose(turn, card, now = Date.now()) {
+      const sub = { question: turn.question, result: { answered: true, best: card }, ts: now, feedback: 0, failed: [] };
+      if (!turn.result.answered) {
+        // Der Vorschlag ersetzt die fehlende Antwort – wie eine Umformulierung behandeln.
+        sub.failed = [...turn.failed];
+        if (this.last === turn) { turn.closed = true; this.last = sub; }
+      } else {
+        this._emit(this.ki.implicit(turn.question, card.id, +1));
+        turn.choseOther = true;
+        sub.closed = true;
+      }
+      return sub;
+    }
+
+    feedback(turn, value) {
+      if (!turn.result.answered || turn.feedback) return;
+      turn.feedback = value > 0 ? 1 : -1;
+      this._emit(this.ki.feedback(turn.question, turn.result.best.id, turn.feedback));
+      if (turn.feedback > 0) this._accept(turn, true);
+      else this._emit(this.ki.noteOpen(turn.question));
+    }
+
+    /** Gespräch endet (App geschlossen/verlassen): letzte Antwort gilt als passend. */
+    end() {
+      if (this.last && !this.last.closed) { this.last.closed = true; this._accept(this.last); }
+    }
+
+    _accept(turn, explicit = false) {
+      if (turn.accepted || !turn.result.answered || turn.feedback < 0) return;
+      turn.accepted = true;
+      if (!explicit && turn.feedback === 0 && !turn.choseOther) this._emit(this.ki.implicit(turn.question, turn.result.best.id, +1));
+      for (const q of turn.failed) this._emit(this.ki.alias(q, turn.result.best.id, turn.question));
+    }
   }
 
   StaplerEngine.tokenize = tokenize;
   StaplerEngine.normalize = normalize;
+  StaplerEngine.splitDocument = splitDocument;
+  StaplerEngine.Conversation = Conversation;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = StaplerEngine;
   else root.StaplerEngine = StaplerEngine;

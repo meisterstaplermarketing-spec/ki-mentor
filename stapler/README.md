@@ -40,15 +40,21 @@ sagt sie das und merkt sich die Frage – bei Staplern ist eine falsche Antwort 
 Jeder Lernschritt ist ein **Ereignis** (Event). Ohne Datenbank bleibt das Gelernte im Browser.
 Mit eigener Datenbank lernen alle Nutzer gemeinsam: Was die KI bei einem Kollegen lernt, weiß sie sofort bei allen.
 
-## Gemeinsames Lernen einrichten (optional)
+## Gemeinsames Lernen
 
-1. Supabase-Projekt anlegen (oder das vorhandene nutzen; Supabase lässt sich auch selbst hosten).
-2. Inhalt von `supabase.sql` im SQL-Editor ausführen.
-3. In der App: 🎓 → „Gemeinsames Lernen“ → Projekt-URL und Anon Key eintragen → **Verbinden**.
+Ist bereits eingerichtet: Die App speichert alle Lernschritte in der Tabelle `stapler_events` im
+Supabase-Projekt **„Stapler-Akademie“** (neben den Tabellen `ak_*` und `lt_*`, ohne diese zu berühren).
+Jedes Gerät lernt dadurch automatisch von allen anderen. Kosten: keine, solange das Projekt im
+kostenlosen Tarif bleibt.
 
-> Hinweis: Mit dem Anon Key kann jeder, der die App öffnet, Lernschritte hinzufügen. Für einen
-> öffentlichen Einsatz das Beibringen auf angemeldete Mitarbeiter beschränken (Supabase Auth +
-> Insert-Policy nur für `authenticated`).
+- Der Anon Key darf in `stapler_events` nur **lesen und anhängen** – nicht ändern oder löschen,
+  und er sieht keine Daten der Akademie oder der Tourenplanung.
+- Ein Gerät kann im Bereich 🎓 → „Gemeinsames Lernen“ getrennt werden (Felder leeren → Verbinden).
+- Für ein anderes Projekt: `supabase.sql` dort ausführen und URL/Key in der App eintragen
+  (bzw. `DEFAULT_DB` in `index.html` ändern).
+
+> Hinweis: Jeder, der die App öffnet, kann Lernschritte hinzufügen. Für einen öffentlichen Einsatz
+> das Beibringen auf angemeldete Mitarbeiter beschränken (Supabase Auth + Insert-Policy nur für `authenticated`).
 
 ## Wissen erweitern
 

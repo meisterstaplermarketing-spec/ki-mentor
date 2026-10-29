@@ -414,6 +414,12 @@
 <script>
 const STATE_KEY = 'stapler_ki_state';
 const DB_KEY = 'stapler_ki_db';
+// Gemeinsame Lern-Datenbank (Supabase-Projekt „Stapler-Akademie“, Tabelle stapler_events).
+// Der Anon Key ist öffentlich gedacht; er darf dort nur lesen und neue Lernschritte anhängen.
+const DEFAULT_DB = {
+  url: 'https://pfmnlfnjophvoboxgavs.supabase.co',
+  key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmbW5sZm5qb3Bodm9ib3hnYXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Njk3MDYsImV4cCI6MjEwNzU0NTcwNn0.ovVHZk29FVW4Ka-Al3W0RHOZ8styxkj6iq01DodkMn0',
+};
 const ki = new StaplerEngine(STAPLER_WISSEN);
 const conversation = new StaplerEngine.Conversation(ki, ev => record(ev));
 let db = null;              // { url, key }
@@ -423,7 +429,10 @@ let teachContext = null;    // { replaces } bei Korrekturen
 // ── Speicher ──
 function load() {
   try { ki.importState(JSON.parse(localStorage.getItem(STATE_KEY) || 'null')); } catch (e) { console.warn(e); }
-  try { db = JSON.parse(localStorage.getItem(DB_KEY) || 'null'); } catch (e) { db = null; }
+  try {
+    const stored = localStorage.getItem(DB_KEY);
+    db = stored === 'aus' ? null : (stored ? JSON.parse(stored) : DEFAULT_DB);
+  } catch (e) { db = DEFAULT_DB; }
   try { pending = JSON.parse(localStorage.getItem(STATE_KEY + '_pending') || '[]'); } catch (e) { pending = []; }
 }
 
@@ -493,7 +502,7 @@ function saveDb() {
   const key = document.getElementById('db-key').value.trim();
   if (!url || !key) {
     db = null;
-    localStorage.removeItem(DB_KEY);
+    localStorage.setItem(DB_KEY, 'aus');
     document.getElementById('db-status').textContent = 'Nicht verbunden – Lernen bleibt auf diesem Gerät.';
     document.getElementById('db-status').style.color = '';
     document.getElementById('nav-status').textContent = '● Lokal · lernt mit';

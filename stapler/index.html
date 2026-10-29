@@ -134,6 +134,7 @@
     .bubble.user { background: var(--blue); color: #fff; border-radius: 18px 18px 4px 18px; }
     .bubble.bot { background: var(--bg-card); border-radius: 18px 18px 18px 4px; box-shadow: var(--shadow); }
     .bubble.bot strong { color: var(--accent-strong); font-weight: 600; }
+    .bubble.bot a { color: var(--blue); text-decoration: none; word-break: break-all; }
 
     .meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 0.5px solid var(--separator); }
     .tag { background: var(--fill2); border-radius: 20px; padding: 2px 8px; font-size: 12px; color: var(--text-secondary); }
@@ -533,7 +534,16 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function format(text) {
-  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Links antippbar machen (lange Dokument-Links gekürzt anzeigen).
+    .replace(/https?:\/\/[^\s<]+[^\s<.,;)]/g, url => {
+      let label = url;
+      try { label = decodeURIComponent(url.split('/').pop().replace(/^.*\(-\)/, '')) || url; } catch (e) {}
+      if (label.length > 50) label = label.slice(0, 47) + '…';
+      return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+    })
+    .replace(/\n/g, '<br>');
 }
 function scrollToBottom() { const a = document.getElementById('chat-area'); a.scrollTop = a.scrollHeight; }
 function hideWelcome() { const w = document.getElementById('welcome'); if (w) w.remove(); }
@@ -776,7 +786,16 @@ function htmlToText(html) {
 async function sourceItems(src) {
   const url = new URL(src.url);
   if (src.code) url.searchParams.set('code', src.code);
-  const res = await fetch(url, { cache: 'no-store' });
+  let res;
+  try {
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (e) {
+    // Der Browser darf fremde Seiten oft nicht direkt abrufen (CORS) – dann über das Dokumenten-Center.
+    const proxy = new URL(DEFAULT_SOURCES[0].url);
+    proxy.searchParams.set('code', DEFAULT_SOURCES[0].code);
+    proxy.searchParams.set('url', src.url);
+    res = await fetch(proxy, { cache: 'no-store' });
+  }
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { msg = (await res.json()).error || msg; } catch (e) {}

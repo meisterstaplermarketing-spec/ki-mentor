@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Stapler-KI</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      --bg: #f2f2f7;
+      --bg-nav: rgba(249,249,249,0.94);
+      --bg-card: #ffffff;
+      --bg-input: #ffffff;
+      --text: #000000;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #aeaeb2;
+      --separator: rgba(60,60,67,0.12);
+      --separator-strong: rgba(60,60,67,0.29);
+      --accent: #f5a400;
+      --accent-strong: #c98500;
+      --blue: #007aff;
+      --green: #34c759;
+      --red: #ff3b30;
+      --fill: rgba(120,120,128,0.12);
+      --fill2: rgba(120,120,128,0.08);
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --bg-nav: rgba(28,28,30,0.94);
+        --bg-card: #1c1c1e;
+        --bg-input: #2c2c2e;
+        --text: #ffffff;
+        --text-secondary: rgba(235,235,245,0.6);
+        --text-tertiary: rgba(235,235,245,0.3);
+        --separator: rgba(84,84,88,0.65);
+        --separator-strong: rgba(84,84,88,0.8);
+        --accent: #ffb31a;
+        --accent-strong: #ffc24d;
+        --blue: #0a84ff;
+        --green: #30d158;
+        --red: #ff453a;
+        --fill: rgba(120,120,128,0.36);
+        --fill2: rgba(120,120,128,0.20);
+        --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      }
+    }
+
+    html, body { height: 100%; height: 100dvh; }
+    body {
+      font-family: var(--sf); background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    button { font-family: var(--sf); -webkit-tap-highlight-color: transparent; }
+
+    /* Nav */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top));
+      background: var(--bg-nav); backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 0.5px solid var(--separator); flex-shrink: 0; position: relative; z-index: 10;
+    }
+    .nav-center {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; pointer-events: none;
+    }
+    .nav-title { font-size: 17px; font-weight: 600; letter-spacing: -0.4px; }
+    .nav-subtitle { font-size: 12px; color: var(--green); }
+    .nav-avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: linear-gradient(145deg, #ffb31a, #f57c00);
+      display: flex; align-items: center; justify-content: center; font-size: 17px;
+    }
+    .nav-btn {
+      background: none; border: none; cursor: pointer; padding: 4px 2px; color: var(--blue);
+      display: flex; align-items: center; gap: 4px; font-size: 15px; position: relative;
+    }
+    .nav-btn:active { opacity: 0.5; }
+    .badge {
+      position: absolute; top: -2px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px;
+      border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; font-weight: 600;
+      display: none; align-items: center; justify-content: center;
+    }
+    .badge.show { display: flex; }
+
+    /* Chat */
+    #chat-area {
+      flex: 1; overflow-y: auto; padding: 16px 16px 8px;
+      display: flex; flex-direction: column; gap: 4px; -webkit-overflow-scrolling: touch;
+    }
+    #chat-area::-webkit-scrollbar { display: none; }
+
+    #welcome {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      padding: 32px 4px 24px; animation: fadeIn 0.4s ease;
+    }
+    .welcome-icon {
+      width: 80px; height: 80px; border-radius: 22px;
+      background: linear-gradient(145deg, #ffb31a, #f57c00);
+      display: flex; align-items: center; justify-content: center; font-size: 40px;
+      box-shadow: 0 8px 24px rgba(245,124,0,0.3);
+    }
+    .welcome-title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; text-align: center; }
+    .welcome-sub {
+      font-size: 15px; color: var(--text-secondary); text-align: center;
+      max-width: 320px; line-height: 1.5;
+    }
+    .suggestions { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; margin-top: 8px; }
+    .suggestion-chip {
+      background: var(--bg-card); border: 0.5px solid var(--separator-strong); border-radius: 13px;
+      padding: 12px 16px; font-size: 15px; color: var(--blue); cursor: pointer; text-align: left;
+      box-shadow: var(--shadow);
+    }
+    .suggestion-chip:active { opacity: 0.6; }
+
+    .message { display: flex; flex-direction: column; animation: msgIn 0.22s ease; margin-bottom: 2px; }
+    .message.user { align-items: flex-end; }
+    .message.bot { align-items: flex-start; }
+    .message.user + .message.bot, .message.bot + .message.user { margin-top: 10px; }
+
+    .bubble {
+      max-width: min(88%, 520px); padding: 10px 14px; font-size: 16px; line-height: 1.45;
+      letter-spacing: -0.2px; word-break: break-word;
+    }
+    .bubble.user { background: var(--blue); color: #fff; border-radius: 18px 18px 4px 18px; }
+    .bubble.bot { background: var(--bg-card); border-radius: 18px 18px 18px 4px; box-shadow: var(--shadow); }
+    .bubble.bot strong { color: var(--accent-strong); font-weight: 600; }
+
+    .meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 0.5px solid var(--separator); }
+    .tag { background: var(--fill2); border-radius: 20px; padding: 2px 8px; font-size: 12px; color: var(--text-secondary); }
+    .tag.learned { color: var(--green); }
+
+    .conf { height: 4px; border-radius: 2px; background: var(--fill); margin-top: 8px; overflow: hidden; }
+    .conf > div { height: 100%; background: var(--green); }
+    .conf.mid > div { background: var(--accent); }
+    .conf.low > div { background: var(--red); }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; padding-left: 2px; }
+    .act {
+      background: var(--bg-card); border: 0.5px solid var(--separator-strong); border-radius: 16px;
+      padding: 5px 11px; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+    }
+    .act:active { opacity: 0.6; }
+    .act.done { color: var(--green); border-color: var(--green); cursor: default; }
+    .act.primary { color: var(--blue); border-color: var(--blue); }
+
+    .related { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; max-width: min(88%, 520px); }
+    .related-label { font-size: 12px; color: var(--text-secondary); padding-left: 4px; }
+    .related .suggestion-chip { padding: 8px 12px; font-size: 14px; }
+
+    /* Input */
+    #input-area {
+      flex-shrink: 0; padding: 8px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom));
+      background: var(--bg-nav); backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px); border-top: 0.5px solid var(--separator);
+    }
+    .input-row { display: flex; align-items: flex-end; gap: 8px; max-width: 700px; margin: 0 auto; }
+    .input-wrap {
+      flex: 1; background: var(--bg-input); border: 0.5px solid var(--separator-strong);
+      border-radius: 22px; display: flex; padding: 8px 14px; box-shadow: var(--shadow);
+    }
+    .input-wrap:focus-within { border-color: var(--accent); }
+    #user-input {
+      flex: 1; background: none; border: none; outline: none; font-family: var(--sf);
+      font-size: 17px; color: var(--text); resize: none; max-height: 120px; line-height: 1.45;
+    }
+    #user-input::placeholder { color: var(--text-tertiary); }
+    #send-btn {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--accent); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    #send-btn:active { transform: scale(0.9); }
+    #send-btn svg { width: 16px; height: 16px; fill: #fff; margin-left: 1px; }
+
+    /* Sheets */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none;
+      align-items: flex-end; justify-content: center; z-index: 100;
+    }
+    .overlay.open { display: flex; }
+    .panel {
+      background: var(--bg); border-radius: 12px 12px 0 0; width: 100%; max-width: 560px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      animation: sheetUp 0.35s cubic-bezier(0.32,0.72,0,1); max-height: 92dvh; overflow-y: auto;
+    }
+    .sheet-handle { width: 36px; height: 5px; background: var(--fill); border-radius: 3px; margin: 10px auto 0; }
+    .sheet-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 0; }
+    .sheet-title { font-size: 17px; font-weight: 600; }
+    .sheet-close {
+      background: var(--fill); border: none; cursor: pointer; width: 30px; height: 30px; border-radius: 50%;
+      font-size: 13px; color: var(--text-secondary); font-weight: 600;
+    }
+    .section { margin: 20px 16px 0; }
+    .section-label {
+      font-size: 13px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px;
+      margin-bottom: 6px; padding-left: 4px;
+    }
+    .section-hint { font-size: 13px; color: var(--text-secondary); padding: 6px 4px 0; line-height: 1.4; }
+    .group { background: var(--bg-card); border-radius: 12px; overflow: hidden; }
+    .row {
+      display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+      border-bottom: 0.5px solid var(--separator); font-size: 15px;
+    }
+    .row:last-child { border-bottom: none; }
+    .row .grow { flex: 1; min-width: 0; }
+    .row .sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+    .row .val { color: var(--text-secondary); }
+    .row input, .row textarea {
+      flex: 1; background: none; border: none; outline: none; font-family: var(--sf);
+      font-size: 15px; color: var(--text); width: 100%;
+    }
+    .row textarea { resize: vertical; min-height: 110px; line-height: 1.45; }
+    .row label { min-width: 84px; flex-shrink: 0; }
+    .link { background: none; border: none; color: var(--blue); font-size: 15px; cursor: pointer; padding: 2px 0; }
+    .link.red { color: var(--red); }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .stat { background: var(--bg-card); border-radius: 12px; padding: 10px 6px; text-align: center; }
+    .stat b { display: block; font-size: 20px; }
+    .stat span { font-size: 11px; color: var(--text-secondary); }
+    .btn {
+      display: block; margin: 20px 16px 0; width: calc(100% - 32px); padding: 14px; border: none;
+      border-radius: 12px; background: var(--accent); color: #fff; font-size: 17px; font-weight: 600; cursor: pointer;
+    }
+    .btn:active { opacity: 0.8; }
+    .empty { padding: 14px; font-size: 14px; color: var(--text-secondary); text-align: center; }
+
+    #toast {
+      position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-8px);
+      background: rgba(50,50,52,0.92); color: #fff; padding: 10px 18px; border-radius: 20px;
+      font-size: 14px; z-index: 200; opacity: 0; transition: opacity 0.25s, transform 0.25s;
+      pointer-events: none; max-width: calc(100% - 32px); text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    @keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+
+    @media (min-width: 700px) {
+      #chat-area { max-width: 740px; margin: 0 auto; width: 100%; }
+      .stats { gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-avatar">🚜</div>
+  <div class="nav-center">
+    <div class="nav-title">Stapler-KI</div>
+    <div class="nav-subtitle" id="nav-status">● Lokal · lernt mit</div>
+  </div>
+  <button class="nav-btn" onclick="openSheet('learn-sheet')" title="Lernen & Wissen">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 7l10-4 10 4-10 4z"/><path d="M6 9v5c0 1.7 2.7 3 6 3s6-1.3 6-3V9"/><path d="M22 7v6"/>
+    </svg>
+    <span class="badge" id="open-badge">0</span>
+  </button>
+</nav>
+
+<div id="chat-area">
+  <div id="welcome">
+    <div class="welcome-icon">🚜</div>
+    <div class="welcome-title">Deine Gabelstapler-KI</div>
+    <div class="welcome-sub">Läuft komplett eigenständig – ohne Fremdanbieter, ohne Token-Kosten. Und sie lernt mit jeder Frage dazu.</div>
+    <div class="suggestions">
+      <button class="suggestion-chip" onclick="ask('Brauche ich einen Staplerschein?')">Brauche ich einen Staplerschein?</button>
+      <button class="suggestion-chip" onclick="ask('Wie oft muss die UVV-Prüfung gemacht werden?')">Wie oft muss die UVV-Prüfung gemacht werden?</button>
+      <button class="suggestion-chip" onclick="ask('Elektro, Diesel oder Gas – was passt zu mir?')">Elektro, Diesel oder Gas – was passt zu mir?</button>
+      <button class="suggestion-chip" onclick="ask('Mein Elektrostapler fährt nicht')">Mein Elektrostapler fährt nicht</button>
+    </div>
+  </div>
+</div>
+
+<div id="input-area">
+  <div class="input-row">
+    <div class="input-wrap">
+      <textarea id="user-input" rows="1" placeholder="Frag mich etwas zum Stapler …"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    </div>
+    <button id="send-btn" onclick="sendMessage()" title="Senden">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Beibringen / Korrigieren -->
+<div class="overlay" id="teach-sheet" onclick="closeIfOutside(event)">
+  <div class="panel">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="teach-title">Wissen beibringen</div>
+      <button class="sheet-close" onclick="closeSheet('teach-sheet')">✕</button>
+    </div>
+    <div class="section">
+      <div class="section-label">Frage</div>
+      <div class="group"><div class="row"><input id="t-question" placeholder="z. B. Wie lauten eure Öffnungszeiten?" /></div></div>
+    </div>
+    <div class="section">
+      <div class="section-label">Richtige Antwort</div>
+      <div class="group"><div class="row"><textarea id="t-answer" placeholder="Die Antwort, die die KI künftig geben soll …"></textarea></div></div>
+      <div class="section-hint">Tipp: **fett** für Hervorhebungen, • für Aufzählungen.</div>
+    </div>
+    <div class="section">
+      <div class="section-label">Zusatz (optional)</div>
+      <div class="group">
+        <div class="row"><label>Stichwörter</label><input id="t-keywords" placeholder="kommagetrennt" /></div>
+        <div class="row"><label>Kategorie</label><input id="t-category" placeholder="z. B. Service" /></div>
+        <div class="row"><label>Quelle</label><input id="t-source" placeholder="z. B. Betriebsanleitung" /></div>
+      </div>
+    </div>
+    <button class="btn" onclick="saveTeach()">Merken</button>
+  </div>
+</div>
+
+<!-- Lernen & Wissen -->
+<div class="overlay" id="learn-sheet" onclick="closeIfOutside(event)">
+  <div class="panel">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Lernen & Wissen</div>
+      <button class="sheet-close" onclick="closeSheet('learn-sheet')">✕</button>
+    </div>
+
+    <div class="section"><div class="stats" id="stats"></div></div>
+
+    <div class="section">
+      <div class="section-label">Offene Fragen</div>
+      <div class="group" id="open-list"></div>
+      <div class="section-hint">Fragen, die die KI noch nicht sicher beantworten konnte. Beantworte sie – so wird sie besser.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Gelerntes Wissen</div>
+      <div class="group" id="learned-list"></div>
+      <div class="group" style="margin-top:8px">
+        <div class="row"><button class="link" onclick="openTeach()">+ Neues Wissen hinzufügen</button></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Gemeinsames Lernen (eigene Datenbank)</div>
+      <div class="group">
+        <div class="row"><label>Supabase-URL</label><input id="db-url" placeholder="https://xxx.supabase.co" autocomplete="off" /></div>
+        <div class="row"><label>Anon Key</label><input id="db-key" type="password" placeholder="eyJ…" autocomplete="off" /></div>
+        <div class="row"><span class="grow val" id="db-status">Nicht verbunden – Lernen bleibt auf diesem Gerät.</span><button class="link" onclick="saveDb()">Verbinden</button></div>
+      </div>
+      <div class="section-hint">Optional. Alles Gelernte wird in deiner eigenen Datenbank gespeichert und mit allen Geräten geteilt – keine KI-Anbieter, keine Tokens. Einrichtung: siehe <code>stapler/supabase.sql</code>.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Sicherung</div>
+      <div class="group">
+        <div class="row"><button class="link" onclick="exportKnowledge()">Gelerntes exportieren (JSON)</button></div>
+        <div class="row"><button class="link" onclick="document.getElementById('import-file').click()">Gelerntes importieren</button>
+          <input type="file" id="import-file" accept="application/json" style="display:none" onchange="importKnowledge(event)" /></div>
+        <div class="row"><button class="link red" onclick="resetLocal()">Lokales Lernen zurücksetzen</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="wissen.js"></script>
+<script src="engine.js"></script>
+<script>
+const STATE_KEY = 'stapler_ki_state';
+const DB_KEY = 'stapler_ki_db';
+const ki = new StaplerEngine(STAPLER_WISSEN);
+let db = null;              // { url, key }
+let pending = [];           // noch nicht synchronisierte Events
+let teachContext = null;    // { replaces } bei Korrekturen
+
+// ── Speicher ──
+function load() {
+  try { ki.importState(JSON.parse(localStorage.getItem(STATE_KEY) || 'null')); } catch (e) { console.warn(e); }
+  try { db = JSON.parse(localStorage.getItem(DB_KEY) || 'null'); } catch (e) { db = null; }
+  try { pending = JSON.parse(localStorage.getItem(STATE_KEY + '_pending') || '[]'); } catch (e) { pending = []; }
+}
+
+function persist() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(ki.exportState()));
+    localStorage.setItem(STATE_KEY + '_pending', JSON.stringify(pending));
+  } catch (e) { console.warn(e); }
+  updateBadge();
+}
+
+function record(ev) {
+  if (!ev) return;
+  pending.push(ev);
+  persist();
+  pushEvents();
+}
+
+// ── Gemeinsames Lernen über eigene Supabase-Datenbank (REST, keine Bibliothek nötig) ──
+function dbHeaders(extra = {}) {
+  return { apikey: db.key, Authorization: `Bearer ${db.key}`, 'Content-Type': 'application/json', ...extra };
+}
+
+async function pullEvents() {
+  if (!db) return;
+  try {
+    const res = await fetch(`${db.url}/rest/v1/stapler_events?select=event&order=ts.asc&limit=100000`, { headers: dbHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    const added = ki.importState({ events: rows.map(r => r.event) });
+    if (added) persist();
+    setDbStatus(`Verbunden · ${rows.length} gemeinsame Lernschritte`, true);
+  } catch (e) {
+    setDbStatus('Verbindung fehlgeschlagen: ' + e.message, false);
+  }
+}
+
+async function pushEvents() {
+  if (!db || !pending.length) return;
+  const batch = pending.slice();
+  try {
+    const res = await fetch(`${db.url}/rest/v1/stapler_events`, {
+      method: 'POST',
+      headers: dbHeaders({ Prefer: 'resolution=ignore-duplicates,return=minimal' }),
+      body: JSON.stringify(batch.map(ev => ({ id: ev.id, ts: ev.ts, type: ev.type, event: ev }))),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const sent = new Set(batch.map(ev => ev.id));
+    pending = pending.filter(ev => !sent.has(ev.id));
+    persist();
+  } catch (e) {
+    console.warn('Sync später erneut:', e);
+  }
+}
+
+async function sync() { await pushEvents(); await pullEvents(); }
+
+function setDbStatus(text, ok) {
+  const el = document.getElementById('db-status');
+  el.textContent = text;
+  el.style.color = ok ? 'var(--green)' : 'var(--red)';
+  document.getElementById('nav-status').textContent = ok ? '● Gemeinsam lernend' : '● Lokal · lernt mit';
+}
+
+function saveDb() {
+  const url = document.getElementById('db-url').value.trim().replace(/\/+$/, '');
+  const key = document.getElementById('db-key').value.trim();
+  if (!url || !key) {
+    db = null;
+    localStorage.removeItem(DB_KEY);
+    document.getElementById('db-status').textContent = 'Nicht verbunden – Lernen bleibt auf diesem Gerät.';
+    document.getElementById('db-status').style.color = '';
+    document.getElementById('nav-status').textContent = '● Lokal · lernt mit';
+    return;
+  }
+  db = { url, key };
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  // Bisher lokal Gelerntes einmalig mit hochladen.
+  const known = new Set(pending.map(ev => ev.id));
+  ki.events.forEach(ev => { if (!known.has(ev.id)) pending.push(ev); });
+  setDbStatus('Verbinde …', true);
+  sync().then(renderLearn);
+}
+
+// ── Chat ──
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function format(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+}
+function scrollToBottom() { const a = document.getElementById('chat-area'); a.scrollTop = a.scrollHeight; }
+function hideWelcome() { const w = document.getElementById('welcome'); if (w) w.remove(); }
+function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+
+function addUser(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'message user';
+  wrap.innerHTML = `<div class="bubble user">${esc(text)}</div>`;
+  document.getElementById('chat-area').appendChild(wrap);
+}
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+function renderCard(question, card, confidence, related) {
+  const wrap = el('div', 'message bot');
+  const bubble = el('div', 'bubble bot', format(card.answer));
+  const meta = el('div', 'meta');
+  meta.appendChild(el('span', 'tag', esc(card.category || 'Wissen')));
+  if (card.source) meta.appendChild(el('span', 'tag', '📄 ' + esc(card.source)));
+  if (card.origin === 'gelernt') meta.appendChild(el('span', 'tag learned', '✦ gelernt'));
+  if (confidence != null) {
+    const pct = Math.round(confidence * 100);
+    meta.appendChild(el('span', 'tag', `Sicherheit ${pct} %`));
+    bubble.appendChild(meta);
+    const bar = el('div', 'conf' + (pct < 35 ? ' low' : pct < 60 ? ' mid' : ''), `<div style="width:${pct}%"></div>`);
+    bubble.appendChild(bar);
+  } else {
+    bubble.appendChild(meta);
+  }
+  wrap.appendChild(bubble);
+
+  const actions = el('div', 'actions');
+  const up = el('button', 'act', '👍 Hilfreich');
+  const down = el('button', 'act', '👎 Passt nicht');
+  const fix = el('button', 'act', '✏️ Korrigieren');
+  up.onclick = () => {
+    if (up.classList.contains('done')) return;
+    record(ki.feedback(question, card.id, +1));
+    up.classList.add('done'); up.textContent = '✓ Danke, gemerkt'; down.remove();
+  };
+  down.onclick = () => {
+    if (down.classList.contains('done')) return;
+    record(ki.feedback(question, card.id, -1));
+    record(ki.noteOpen(question));
+    down.classList.add('done'); down.textContent = '✓ Notiert'; up.remove();
+    fix.classList.add('primary');
+  };
+  fix.onclick = () => openTeach({ question, answer: card.answer, category: card.category, replaces: card.id });
+  actions.append(up, down, fix);
+  wrap.appendChild(actions);
+
+  if (related && related.length) wrap.appendChild(renderRelated(question, related, 'Siehe auch'));
+  document.getElementById('chat-area').appendChild(wrap);
+}
+
+function renderRelated(question, related, label) {
+  const box = el('div', 'related');
+  box.appendChild(el('div', 'related-label', label));
+  related.forEach(r => {
+    const chip = el('button', 'suggestion-chip', esc(r.question));
+    chip.onclick = () => { renderCard(question, r, null, []); scrollToBottom(); };
+    box.appendChild(chip);
+  });
+  return box;
+}
+
+function renderUnknown(question, related) {
+  const wrap = el('div', 'message bot');
+  wrap.appendChild(el('div', 'bubble bot',
+    'Dazu weiß ich noch nichts Sicheres – und ich rate nicht, wenn es um Stapler geht.<br><br>' +
+    'Ich habe mir die Frage gemerkt. Wenn du die Antwort kennst, bring sie mir bei – dann kann ich sie beim nächsten Mal beantworten.'));
+  const actions = el('div', 'actions');
+  const teach = el('button', 'act primary', '🎓 Antwort beibringen');
+  teach.onclick = () => openTeach({ question });
+  actions.appendChild(teach);
+  wrap.appendChild(actions);
+  if (related.length) wrap.appendChild(renderRelated(question, related, 'Meintest du vielleicht:'));
+  document.getElementById('chat-area').appendChild(wrap);
+}
+
+function ask(text) {
+  document.getElementById('user-input').value = text;
+  sendMessage();
+}
+
+function sendMessage() {
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+  hideWelcome();
+  input.value = '';
+  input.style.height = 'auto';
+  addUser(text);
+
+  const r = ki.ask(text);
+  if (r.unsure) record(ki.noteOpen(text));
+  if (r.answered) renderCard(text, r.best, r.confidence, r.related);
+  else renderUnknown(text, r.related);
+  scrollToBottom();
+  input.focus();
+}
+
+// ── Beibringen ──
+function openTeach(opts = {}) {
+  teachContext = { replaces: opts.replaces || null };
+  document.getElementById('teach-title').textContent = opts.replaces ? 'Antwort korrigieren' : 'Wissen beibringen';
+  document.getElementById('t-question').value = opts.question || '';
+  document.getElementById('t-answer').value = opts.answer || '';
+  document.getElementById('t-keywords').value = '';
+  document.getElementById('t-category').value = opts.category || '';
+  document.getElementById('t-source').value = '';
+  closeSheet('learn-sheet');
+  openSheet('teach-sheet');
+  setTimeout(() => document.getElementById(opts.question ? 't-answer' : 't-question').focus(), 300);
+}
+
+function saveTeach() {
+  const question = document.getElementById('t-question').value.trim();
+  const answer = document.getElementById('t-answer').value.trim();
+  if (!question || !answer) { toast('Bitte Frage und Antwort ausfüllen'); return; }
+  const keywords = document.getElementById('t-keywords').value.split(',').map(s => s.trim()).filter(Boolean);
+  const ev = ki.teach({
+    question, answer, keywords,
+    category: document.getElementById('t-category').value.trim() || 'Gelernt',
+    source: document.getElementById('t-source').value.trim() || 'Team',
+    replaces: teachContext && teachContext.replaces,
+  });
+  record(ev);
+  closeSheet('teach-sheet');
+  toast('Gelernt! Ich kann das jetzt beantworten.');
+}
+
+// ── Lern-Bereich ──
+function renderLearn() {
+  const s = ki.summary();
+  document.getElementById('stats').innerHTML = [
+    [s.entries, 'Wissen'], [s.learned, 'Gelernt'], [s.feedback, 'Feedback'], [s.open, 'Offen'],
+  ].map(([n, l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+
+  const open = ki.openQuestions();
+  const openList = document.getElementById('open-list');
+  openList.innerHTML = open.length ? '' : '<div class="empty">Keine offenen Fragen 🎉</div>';
+  open.slice(0, 30).forEach(o => {
+    const row = el('div', 'row');
+    row.appendChild(el('div', 'grow', `${esc(o.text)}<div class="sub">${o.count}× gefragt</div>`));
+    const answer = el('button', 'link', 'Beantworten');
+    answer.onclick = () => openTeach({ question: o.text });
+    const drop = el('button', 'link red', '✕');
+    drop.title = 'Verwerfen';
+    drop.onclick = () => { record(ki.dismissOpen(o.text)); renderLearn(); };
+    row.append(answer, drop);
+    openList.appendChild(row);
+  });
+
+  const learned = ki.learnedEntries();
+  const list = document.getElementById('learned-list');
+  list.innerHTML = learned.length ? '' : '<div class="empty">Noch nichts dazugelernt.</div>';
+  learned.slice().reverse().forEach(e => {
+    const row = el('div', 'row');
+    row.appendChild(el('div', 'grow', `${esc(e.question)}<div class="sub">${esc(e.category || '')}</div>`));
+    const del = el('button', 'link red', 'Löschen');
+    del.onclick = () => {
+      if (!confirm('Diesen gelernten Eintrag löschen?')) return;
+      record(ki.forget(e.id));
+      renderLearn();
+    };
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+
+  document.getElementById('db-url').value = db ? db.url : '';
+  document.getElementById('db-key').value = db ? db.key : '';
+}
+
+function updateBadge() {
+  const n = ki.summary().open;
+  const b = document.getElementById('open-badge');
+  b.textContent = n > 99 ? '99+' : n;
+  b.classList.toggle('show', n > 0);
+}
+
+function exportKnowledge() {
+  const blob = new Blob([JSON.stringify(ki.exportState(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `stapler-ki-wissen-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importKnowledge(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  file.text().then(txt => {
+    const before = new Set(ki.events.map(ev => ev.id));
+    const added = ki.importState(JSON.parse(txt));
+    ki.events.forEach(ev => { if (!before.has(ev.id)) pending.push(ev); });
+    persist();
+    pushEvents();
+    renderLearn();
+    toast(`${added} Lernschritte importiert`);
+  }).catch(err => toast('Import fehlgeschlagen: ' + err.message));
+  e.target.value = '';
+}
+
+function resetLocal() {
+  if (!confirm('Alles lokal Gelernte auf diesem Gerät löschen? (Eine verbundene Datenbank bleibt unverändert.)')) return;
+  localStorage.removeItem(STATE_KEY);
+  localStorage.removeItem(STATE_KEY + '_pending');
+  location.reload();
+}
+
+// ── Sheets & Toast ──
+function openSheet(id) {
+  if (id === 'learn-sheet') renderLearn();
+  document.getElementById(id).classList.add('open');
+}
+function closeSheet(id) { document.getElementById(id).classList.remove('open'); }
+function closeIfOutside(e) { if (e.target.classList.contains('overlay')) e.target.classList.remove('open'); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Start ──
+load();
+updateBadge();
+if (db) { setDbStatus('Verbinde …', true); sync(); }
+setInterval(() => { if (db) sync(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && db) sync(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

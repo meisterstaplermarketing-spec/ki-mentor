@@ -1,0 +1,17 @@
+{
+  "name": "Stapler-KI",
+  "short_name": "Stapler-KI",
+  "description": "Eigenständige, selbstlernende Gabelstapler-KI – ohne Fremdanbieter",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f5a400",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%23f5a400'/><text y='128' font-size='110' text-anchor='middle' x='96'>🚜</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

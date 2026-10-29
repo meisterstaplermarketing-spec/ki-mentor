@@ -97,7 +97,8 @@ const SV_CATS: [RegExp, string][] = [
   [/^j\)/, "Reinigungsmaschinen"], [/^k\)/, "Halbelektrische Stapler"], [/^m\)/, "AGV (fahrerlose Fahrzeuge)"],
   [/^n\)/, "Lithium-Batterien"], [/^O/i, "Handstapler"],
 ];
-const stripPrefix = (s: string) => clean(s).replace(/^[a-zO]\(?\d*\)?\s*\)?\s*/i, "").replace(/^[a-z]\d+\)\s*/i, "");
+// Gliederungspräfixe wie „d1) “, „a(2) “ oder „O）“ entfernen – nur wenn wirklich eine Klammer folgt.
+const stripPrefix = (s: string) => clean(s).replace(/^[a-zO]\s*\(?\d*\s*[)）]\s*/i, "");
 
 /** „PTE12/15/20N“ → zusätzlich „PTE12N PTE15N PTE20N“, damit Fragen nach Einzelmodellen treffen. */
 function modelVariants(label: string) {
@@ -137,6 +138,8 @@ async function nobleliftPage() {
   return { seed, sv, folder, apiKey, svBase };
 }
 
+// Der Drive-Schlüssel gehört zur Seite auf meisterstapler.de – Abrufe laufen in deren Namen.
+const DRIVE_HEADERS = { Referer: "https://www.meisterstapler.de/" };
 const isGerman = (name: string) => /deutsch|german|\bDE\b|[-_ ]DE\.pdf$|VDI/i.test(name);
 
 async function nobleliftDrive(page: Awaited<ReturnType<typeof nobleliftPage>>) {
@@ -155,8 +158,8 @@ async function nobleliftDrive(page: Awaited<ReturnType<typeof nobleliftPage>>) {
         u.searchParams.set("pageSize", "1000");
         u.searchParams.set("key", page.apiKey);
         if (token) u.searchParams.set("pageToken", token);
-        const r = await fetch(u);
-        if (!r.ok) break;
+        const r = await fetch(u, { headers: DRIVE_HEADERS });
+        if (!r.ok) { console.log("drive list", r.status, await r.text()); break; }
         const j = await r.json();
         for (const f of j.files || []) if (!docs.has(f.id) && isGerman(f.name)) docs.set(f.id, { name: f.name, model: f.name.split(" - ")[0], size: Number(f.size) || 0 });
         token = j.nextPageToken || "";
@@ -167,7 +170,7 @@ async function nobleliftDrive(page: Awaited<ReturnType<typeof nobleliftPage>>) {
 }
 
 function nobleliftVerzeichnis(page: Awaited<ReturnType<typeof nobleliftPage>>) {
-  const groups = new Map<string, { cat: string; lines: string[] }>();
+  const groups = new Map<string, { cat: string; lines: Set<string> }>();
   for (const f of page.sv.files as any[]) {
     const [, ftype, name, path, titleId, version] = f;
     const ext = String(path).split(".").pop()!.toLowerCase();
@@ -181,13 +184,13 @@ function nobleliftVerzeichnis(page: Awaited<ReturnType<typeof nobleliftPage>>) {
     if (!model || /[一-鿿]/.test(model)) continue;
     const cat = (SV_CATS.find(([re]) => re.test(p[0])) || [null, "Sonstige Geräte"])[1];
     const url = /^https?:\/\//i.test(path) ? encodeURI(path) : page.svBase + String(path).split("/").map(encodeURIComponent).join("/");
-    const g = groups.get(model) || { cat, lines: [] };
-    g.lines.push(sentence(`${typ}: ${clean(name).replace(/[一-鿿（）]+/g, " ").trim()}${clean(version) ? ` (Version ${clean(version)})` : ""}${ext !== "pdf" ? ` (${ext.toUpperCase()})` : ""} – ${url}`));
+    const g = groups.get(model) || { cat, lines: new Set<string>() };
+    g.lines.add(sentence(`${typ}: ${clean(name).replace(/[一-鿿（）]+/g, " ").trim()}${clean(version) ? ` (Version ${clean(version)})` : ""}${ext !== "pdf" ? ` (${ext.toUpperCase()})` : ""} – ${url}`));
     groups.set(model, g);
   }
   const blocks = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([model, g]) => {
     const variants = modelVariants(model);
-    return `Noblelift ${heading(model)} Service-Unterlagen\nService-Unterlagen für Noblelift ${model}${variants ? ` (${variants})` : ""}, ${g.cat}, aus dem Noblelift-Serviceportal: ${g.lines.join(" ")}`;
+    return `Noblelift ${heading(model)} Service-Unterlagen\nService-Unterlagen für Noblelift ${model}${variants ? ` (${variants})` : ""}, ${g.cat}, aus dem Noblelift-Serviceportal: ${[...g.lines].join(" ")}`;
   });
   return blocks.join("\n\n");
 }
@@ -210,12 +213,22 @@ async function noblelift() {
 
 /** Reicht ein Drive-PDF durch (nur Dateien aus der Noblelift-Seite – kein offener Proxy). */
 async function drivePdf(id: string) {
-  const { page } = await noblelift();
+  const page = await nobleliftPage();
   const allowed = await nobleliftDrive(page);
-  if (!allowed.has(id) || !page.apiKey) return json({ error: "Dokument nicht freigegeben" }, 404);
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&key=${page.apiKey}`);
-  if (!r.ok) return json({ error: `Drive: HTTP ${r.status}` }, 502);
-  return new Response(r.body, { headers: { ...cors, "Content-Type": "application/pdf", "Cache-Control": "public, max-age=3600" } });
+  if (!allowed.has(id)) return json({ error: "Dokument nicht freigegeben" }, 404);
+  // Öffentlicher Download-Link (der API-Schlüssel der Seite ist für Server-Abrufe gesperrt).
+  const sources = [
+    `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`,
+    ...(page.apiKey ? [`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&key=${page.apiKey}`] : []),
+  ];
+  for (const src of sources) {
+    const r = await fetch(src, { headers: DRIVE_HEADERS });
+    if (!r.ok) continue;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") continue; // z. B. Hinweisseite statt PDF
+    return new Response(bytes, { headers: { ...cors, "Content-Type": "application/pdf", "Cache-Control": "public, max-age=3600" } });
+  }
+  return json({ error: "PDF konnte nicht von Google Drive geladen werden" }, 502);
 }
 
 /** Ruft Links von freigegebenen Seiten serverseitig ab (Browser dürfen das wegen CORS nicht). */

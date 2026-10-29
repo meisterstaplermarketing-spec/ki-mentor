@@ -54,12 +54,15 @@ Voreingestellt ist das **Meisterstapler Dokumenten-Center** – der Dienst
 | Gerätekatalog (alle aktiven Geräte, technische Daten, Ausstattung) | `kat_products`, `kat_categories` | **ohne** Einkaufspreis, Bonus und Listenpreis |
 | Online-Shop (Zubehör, Anbaugeräte …) | `app_settings` → `katalog` | mit den öffentlichen Shop-Preisen |
 | Datenblätter (PDF) | Speicherordner `datasheets` | zeitlich begrenzte Download-Links |
+| Noblelift-Dokumente auf Deutsch (Broschüren, VDI-Datenblätter) | Seite `noblelift-datenblaetter-app-drive.html` → Google Drive | neue deutsche Dateien im Ordner werden automatisch erkannt |
+| Noblelift Service-Unterlagen (Verzeichnis je Modell mit Links) | dieselbe Seite → Noblelift-Serviceportal | Fehlercodes, Anleitungen, Service-Handbücher, Schalt-/Hydraulikpläne, Ersatzteillisten; ohne Videos, Bilder, Zertifikate |
 
 Der Dienst antwortet nur mit dem Zugangscode. Weil alle Lernschritte geteilt werden, liest nur das
 erste Gerät neue PDFs – alle anderen bekommen das Wissen direkt aus der gemeinsamen Datenbank.
 
-Weitere Quellen: Ein direkter Link auf ein PDF, eine Text- oder Webseite funktioniert ebenfalls,
-sofern der Server den Abruf aus dem Browser erlaubt (CORS). Neue Datenblätter einfach in den
+Weitere Quellen: Ein direkter Link auf ein PDF, eine Text- oder Webseite funktioniert ebenfalls.
+Blockiert der Browser den Abruf (CORS), holt der Dienst Links von meisterstapler.de und
+down.noblelift.com serverseitig ab; andere Seiten sind nicht freigegeben. Neue Datenblätter einfach in den
 Speicherordner `datasheets` legen bzw. Geräte im Katalog pflegen – die KI lernt sie von selbst.
 
 ## Gemeinsames Lernen

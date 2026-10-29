@@ -54,7 +54,7 @@ Voreingestellt ist das **Meisterstapler Dokumenten-Center** – der Dienst
 | Gerätekatalog (alle aktiven Geräte, technische Daten, Ausstattung) | `kat_products`, `kat_categories` | **ohne** Einkaufspreis, Bonus und Listenpreis |
 | Online-Shop (Zubehör, Anbaugeräte …) | `app_settings` → `katalog` | mit den öffentlichen Shop-Preisen |
 | Datenblätter (PDF) | Speicherordner `datasheets` | zeitlich begrenzte Download-Links |
-| Noblelift-Dokumente auf Deutsch (Broschüren, VDI-Datenblätter) | Seite `noblelift-datenblaetter-app-drive.html` → Google Drive | neue deutsche Dateien im Ordner werden automatisch erkannt |
+| Noblelift-Dokumente (93 Broschüren und Datenblätter, deutsch und englisch) | Seite `noblelift-datenblaetter-app-drive.html` → Google Drive | neue Dateien kommen automatisch, sobald sie auf der Seite gelistet sind |
 | Noblelift Service-Unterlagen (Verzeichnis je Modell mit Links) | dieselbe Seite → Noblelift-Serviceportal | Fehlercodes, Anleitungen, Service-Handbücher, Schalt-/Hydraulikpläne, Ersatzteillisten; ohne Videos, Bilder, Zertifikate |
 
 Der Dienst antwortet nur mit dem Zugangscode. Weil alle Lernschritte geteilt werden, liest nur das

@@ -1,7 +1,7 @@
 // Wissensquelle für die Stapler-KI (läuft im Supabase-Projekt „Meisterstapler Leads“).
 // GET /functions/v1/stapler-wissen?code=<Zugangscode>
 // Liefert Gerätekatalog, Online-Shop-Katalog, Datenblätter und Noblelift-Dokumente als lernbare Dokumente.
-//   ?drive=<id>  reicht ein freigegebenes Noblelift-PDF von Google Drive durch
+//   ?drive=<id>  reicht ein freigegebenes Noblelift-PDF von Google Drive durch (alle Sprachen)
 //   ?url=<link>  ruft Links von meisterstapler.de / down.noblelift.com serverseitig ab
 // Bewusst NICHT enthalten: Einkaufspreise, Boni, Listenpreise der Geräte und alle Lead-/Kundendaten.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -132,40 +132,21 @@ async function nobleliftPage() {
   const html = await res.text();
   const seed = extractJson(html, "SEED") || [];
   const sv = extractJson(html, "SV_RAW") || { flat: {}, files: [] };
-  const folder = html.match(/const FOLDER_ID\s*=\s*"([^"]+)"/)?.[1];
   const apiKey = html.match(/const API_KEY\s*=\s*"([^"]+)"/)?.[1];
   const svBase = html.match(/const SV_BASE\s*=\s*"([^"]+)"/)?.[1] || "https://down.noblelift.com/afterSale/sales-public/";
-  return { seed, sv, folder, apiKey, svBase };
+  return { seed, sv, apiKey, svBase };
 }
 
 // Der Drive-Schlüssel gehört zur Seite auf meisterstapler.de – Abrufe laufen in deren Namen.
 const DRIVE_HEADERS = { Referer: "https://www.meisterstapler.de/" };
-const isGerman = (name: string) => /deutsch|german|\bDE\b|[-_ ]DE\.pdf$|VDI/i.test(name);
 
 async function nobleliftDrive(page: Awaited<ReturnType<typeof nobleliftPage>>) {
   const docs = new Map<string, { name: string; model: string; size: number }>();
   for (const d of page.seed as any[]) {
-    if (d.driveId && (d.lang === "DE" || isGerman(d.name))) docs.set(d.driveId, { name: d.name, model: d.model, size: d.size || 0 });
+    if (d.driveId) docs.set(d.driveId, { name: d.name, model: d.model, size: d.size || 0 });
   }
-  // Neue Dateien im Drive-Ordner selbstständig mitnehmen.
-  if (page.folder && page.apiKey) {
-    try {
-      let token = "";
-      do {
-        const u = new URL("https://www.googleapis.com/drive/v3/files");
-        u.searchParams.set("q", `'${page.folder}' in parents and trashed=false and mimeType='application/pdf'`);
-        u.searchParams.set("fields", "nextPageToken,files(id,name,size)");
-        u.searchParams.set("pageSize", "1000");
-        u.searchParams.set("key", page.apiKey);
-        if (token) u.searchParams.set("pageToken", token);
-        const r = await fetch(u, { headers: DRIVE_HEADERS });
-        if (!r.ok) { console.log("drive list", r.status, await r.text()); break; }
-        const j = await r.json();
-        for (const f of j.files || []) if (!docs.has(f.id) && isGerman(f.name)) docs.set(f.id, { name: f.name, model: f.name.split(" - ")[0], size: Number(f.size) || 0 });
-        token = j.nextPageToken || "";
-      } while (token);
-    } catch (e) { console.log("drive list", String(e)); }
-  }
+  // Hinweis: Das Auflisten des Drive-Ordners sperrt Google für diesen Schlüssel (API_KEY_SERVICE_BLOCKED).
+  // Neue Dateien kommen daher über die Liste auf der Noblelift-Seite herein.
   return docs;
 }
 
@@ -252,13 +233,18 @@ Deno.serve(async (req) => {
   try {
     if (url.searchParams.get("drive")) return await drivePdf(url.searchParams.get("drive")!);
     if (url.searchParams.get("url")) return await proxy(url.searchParams.get("url")!);
+    // Fällt ein Teil aus, werden die übrigen Inhalte trotzdem geliefert.
+    const safe = (name: string, p: Promise<any>, fallback: any) =>
+      p.catch(e => { console.log(name, e?.message || JSON.stringify(e)); return fallback; });
     const [geraete, shop, pdfs, nl] = await Promise.all([
-      geraeteKatalog(), shopKatalog(), datenblaetter(),
-      noblelift().catch(e => { console.log("noblelift", String(e)); return { items: [] }; }),
+      safe("geraete", geraeteKatalog(), null), safe("shop", shopKatalog(), null),
+      safe("datenblaetter", datenblaetter(), []), safe("noblelift", noblelift(), { items: [] }),
     ]);
-    return json({ name: "Meisterstapler Dokumenten-Center", items: [geraete, shop, ...pdfs, ...nl.items].filter(Boolean) });
+    const items = [geraete, shop, ...pdfs, ...nl.items].filter(Boolean);
+    if (!items.length) return json({ error: "Wissensquelle gerade nicht verfügbar" }, 503);
+    return json({ name: "Meisterstapler Dokumenten-Center", items });
   } catch (e) {
-    console.log("stapler-wissen", String(e));
+    console.log("stapler-wissen", (e as any)?.message || JSON.stringify(e));
     return json({ error: "Wissensquelle gerade nicht verfügbar" }, 500);
   }
 });

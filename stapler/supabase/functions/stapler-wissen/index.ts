@@ -1,6 +1,8 @@
 // Wissensquelle für die Stapler-KI (läuft im Supabase-Projekt „Meisterstapler Leads“).
 // GET /functions/v1/stapler-wissen?code=<Zugangscode>
-// Liefert Gerätekatalog, Online-Shop-Katalog und Datenblätter als lernbare Dokumente.
+// Liefert Gerätekatalog, Online-Shop-Katalog, Datenblätter und Noblelift-Dokumente als lernbare Dokumente.
+//   ?drive=<id>  reicht ein freigegebenes Noblelift-PDF von Google Drive durch
+//   ?url=<link>  ruft Links von meisterstapler.de / down.noblelift.com serverseitig ab
 // Bewusst NICHT enthalten: Einkaufspreise, Boni, Listenpreise der Geräte und alle Lead-/Kundendaten.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -83,14 +85,165 @@ async function datenblaetter() {
   })).filter(d => d.pdf);
 }
 
+// ── Noblelift-Dokumente (Seite noblelift-datenblaetter-app-drive.html auf meisterstapler.de) ──
+const NOBLELIFT_PAGE = "https://www.meisterstapler.de/wp-content/uploads/noblelift-datenblaetter-app-drive.html";
+const PROXY_HOSTS = ["www.meisterstapler.de", "meisterstapler.de", "down.noblelift.com"];
+const SELF = `${Deno.env.get("SUPABASE_URL")}/functions/v1/stapler-wissen`;
+const SV_TYPES: Record<number, string> = { 1: "Ersatzteilliste", 2: "Bedienungsanleitung", 3: "Service-Handbuch", 4: "Fehlercodes", 5: "Schaltplan", 6: "Hydraulikplan" };
+const SV_CATS: [RegExp, string][] = [
+  [/^a\)/, "Elektro-Gegengewichtsstapler"], [/^b\)/, "Diesel-Gegengewichtsstapler"], [/^c\)/, "Schubmaststapler"],
+  [/^d\)/, "Elektro-Niederhubwagen"], [/^e\)/, "Elektro-Hochhubwagen (Deichselstapler)"], [/^f\)/, "Spreizenstapler"],
+  [/^g\)/, "Doppelstock-Hubwagen und Stapler"], [/^h\)/, "Kommissionierer und Schmalgangstapler"], [/^i\)/, "Schlepper"],
+  [/^j\)/, "Reinigungsmaschinen"], [/^k\)/, "Halbelektrische Stapler"], [/^m\)/, "AGV (fahrerlose Fahrzeuge)"],
+  [/^n\)/, "Lithium-Batterien"], [/^O/i, "Handstapler"],
+];
+const stripPrefix = (s: string) => clean(s).replace(/^[a-zO]\(?\d*\)?\s*\)?\s*/i, "").replace(/^[a-z]\d+\)\s*/i, "");
+
+/** „PTE12/15/20N“ → zusätzlich „PTE12N PTE15N PTE20N“, damit Fragen nach Einzelmodellen treffen. */
+function modelVariants(label: string) {
+  const out = new Set<string>();
+  for (const m of label.matchAll(/([A-Z]+)(\d+(?:\/\d+)+)([A-Z]*)/g)) m[2].split("/").forEach(n => out.add(`${m[1]}${n}${m[3]}`));
+  return [...out].join(" ");
+}
+
+function svType(ftype: number | null, name: string) {
+  if (ftype && SV_TYPES[ftype]) return SV_TYPES[ftype];
+  if (/fault|error|alarm/i.test(name)) return "Fehlercodes";
+  if (/part|spare/i.test(name)) return "Ersatzteilliste";
+  if (/hydraulic/i.test(name)) return "Hydraulikplan";
+  if (/circuit|wiring|schematic|diagram/i.test(name)) return "Schaltplan";
+  if (/service|maintenance|repair/i.test(name)) return "Service-Handbuch";
+  if (/manual|instruction|operat/i.test(name)) return "Bedienungsanleitung";
+  return "";
+}
+
+function extractJson(html: string, name: string) {
+  const start = html.indexOf(`const ${name} = `);
+  if (start < 0) return null;
+  const from = start + `const ${name} = `.length;
+  const end = html.indexOf(";\n", from);
+  return JSON.parse(html.slice(from, end));
+}
+
+async function nobleliftPage() {
+  const res = await fetch(NOBLELIFT_PAGE);
+  if (!res.ok) throw new Error(`Noblelift-Seite: HTTP ${res.status}`);
+  const html = await res.text();
+  const seed = extractJson(html, "SEED") || [];
+  const sv = extractJson(html, "SV_RAW") || { flat: {}, files: [] };
+  const folder = html.match(/const FOLDER_ID\s*=\s*"([^"]+)"/)?.[1];
+  const apiKey = html.match(/const API_KEY\s*=\s*"([^"]+)"/)?.[1];
+  const svBase = html.match(/const SV_BASE\s*=\s*"([^"]+)"/)?.[1] || "https://down.noblelift.com/afterSale/sales-public/";
+  return { seed, sv, folder, apiKey, svBase };
+}
+
+const isGerman = (name: string) => /deutsch|german|\bDE\b|[-_ ]DE\.pdf$|VDI/i.test(name);
+
+async function nobleliftDrive(page: Awaited<ReturnType<typeof nobleliftPage>>) {
+  const docs = new Map<string, { name: string; model: string; size: number }>();
+  for (const d of page.seed as any[]) {
+    if (d.driveId && (d.lang === "DE" || isGerman(d.name))) docs.set(d.driveId, { name: d.name, model: d.model, size: d.size || 0 });
+  }
+  // Neue Dateien im Drive-Ordner selbstständig mitnehmen.
+  if (page.folder && page.apiKey) {
+    try {
+      let token = "";
+      do {
+        const u = new URL("https://www.googleapis.com/drive/v3/files");
+        u.searchParams.set("q", `'${page.folder}' in parents and trashed=false and mimeType='application/pdf'`);
+        u.searchParams.set("fields", "nextPageToken,files(id,name,size)");
+        u.searchParams.set("pageSize", "1000");
+        u.searchParams.set("key", page.apiKey);
+        if (token) u.searchParams.set("pageToken", token);
+        const r = await fetch(u);
+        if (!r.ok) break;
+        const j = await r.json();
+        for (const f of j.files || []) if (!docs.has(f.id) && isGerman(f.name)) docs.set(f.id, { name: f.name, model: f.name.split(" - ")[0], size: Number(f.size) || 0 });
+        token = j.nextPageToken || "";
+      } while (token);
+    } catch (e) { console.log("drive list", String(e)); }
+  }
+  return docs;
+}
+
+function nobleliftVerzeichnis(page: Awaited<ReturnType<typeof nobleliftPage>>) {
+  const groups = new Map<string, { cat: string; lines: string[] }>();
+  for (const f of page.sv.files as any[]) {
+    const [, ftype, name, path, titleId, version] = f;
+    const ext = String(path).split(".").pop()!.toLowerCase();
+    if (!["pdf", "xls", "xlsx", "doc", "docx"].includes(ext) || ftype === 7 || ftype === 8) continue;
+    if (/certificate|declaration|zertifikat/i.test(name)) continue;
+    const typ = svType(ftype, `${name} ${path}`);
+    if (!typ) continue;
+    const p: string[] = (page.sv.flat[titleId] || []).map((s: string) => clean(s));
+    if (!p.length || /test|测试|certificate/i.test(p[0])) continue;
+    const model = stripPrefix(p[p.length - 1]);
+    if (!model || /[一-鿿]/.test(model)) continue;
+    const cat = (SV_CATS.find(([re]) => re.test(p[0])) || [null, "Sonstige Geräte"])[1];
+    const url = /^https?:\/\//i.test(path) ? encodeURI(path) : page.svBase + String(path).split("/").map(encodeURIComponent).join("/");
+    const g = groups.get(model) || { cat, lines: [] };
+    g.lines.push(sentence(`${typ}: ${clean(name).replace(/[一-鿿（）]+/g, " ").trim()}${clean(version) ? ` (Version ${clean(version)})` : ""}${ext !== "pdf" ? ` (${ext.toUpperCase()})` : ""} – ${url}`));
+    groups.set(model, g);
+  }
+  const blocks = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([model, g]) => {
+    const variants = modelVariants(model);
+    return `Noblelift ${heading(model)} Service-Unterlagen\nService-Unterlagen für Noblelift ${model}${variants ? ` (${variants})` : ""}, ${g.cat}, aus dem Noblelift-Serviceportal: ${g.lines.join(" ")}`;
+  });
+  return blocks.join("\n\n");
+}
+
+async function noblelift() {
+  const page = await nobleliftPage();
+  const items: any[] = [];
+  const verzeichnis = nobleliftVerzeichnis(page);
+  if (verzeichnis) items.push({ id: "noblelift-service", title: "Noblelift Service-Unterlagen (Verzeichnis)", version: await hash(verzeichnis), text: verzeichnis });
+  for (const [id, d] of await nobleliftDrive(page)) {
+    items.push({
+      id: `drive:${id}`,
+      title: clean(d.name).replace(/\.pdf(\.pdf)?$/i, ""),
+      version: `${id}:${d.size}`,
+      pdf: `${SELF}?code=${encodeURIComponent(ZUGANGSCODE)}&drive=${encodeURIComponent(id)}`,
+    });
+  }
+  return { items, page };
+}
+
+/** Reicht ein Drive-PDF durch (nur Dateien aus der Noblelift-Seite – kein offener Proxy). */
+async function drivePdf(id: string) {
+  const { page } = await noblelift();
+  const allowed = await nobleliftDrive(page);
+  if (!allowed.has(id) || !page.apiKey) return json({ error: "Dokument nicht freigegeben" }, 404);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&key=${page.apiKey}`);
+  if (!r.ok) return json({ error: `Drive: HTTP ${r.status}` }, 502);
+  return new Response(r.body, { headers: { ...cors, "Content-Type": "application/pdf", "Cache-Control": "public, max-age=3600" } });
+}
+
+/** Ruft Links von freigegebenen Seiten serverseitig ab (Browser dürfen das wegen CORS nicht). */
+async function proxy(target: string) {
+  let u: URL;
+  try { u = new URL(target); } catch { return json({ error: "Ungültiger Link" }, 400); }
+  if (!PROXY_HOSTS.includes(u.hostname)) return json({ error: "Diese Seite ist nicht freigegeben" }, 403);
+  if (u.pathname.includes("noblelift-datenblaetter")) {
+    const { items } = await noblelift();
+    return json({ name: "Noblelift Datenblätter & Service", items });
+  }
+  const r = await fetch(u);
+  return new Response(r.body, { status: r.status, headers: { ...cors, "Content-Type": r.headers.get("content-type") || "application/octet-stream" } });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const url = new URL(req.url);
   const code = (url.searchParams.get("code") || req.headers.get("x-zugangscode") || "").trim().toUpperCase();
   if (code !== ZUGANGSCODE) return json({ error: "Zugangscode ungültig" }, 401);
   try {
-    const [geraete, shop, pdfs] = await Promise.all([geraeteKatalog(), shopKatalog(), datenblaetter()]);
-    return json({ name: "Meisterstapler Dokumenten-Center", items: [geraete, shop, ...pdfs].filter(Boolean) });
+    if (url.searchParams.get("drive")) return await drivePdf(url.searchParams.get("drive")!);
+    if (url.searchParams.get("url")) return await proxy(url.searchParams.get("url")!);
+    const [geraete, shop, pdfs, nl] = await Promise.all([
+      geraeteKatalog(), shopKatalog(), datenblaetter(),
+      noblelift().catch(e => { console.log("noblelift", String(e)); return { items: [] }; }),
+    ]);
+    return json({ name: "Meisterstapler Dokumenten-Center", items: [geraete, shop, ...pdfs, ...nl.items].filter(Boolean) });
   } catch (e) {
     console.log("stapler-wissen", String(e));
     return json({ error: "Wissensquelle gerade nicht verfügbar" }, 500);

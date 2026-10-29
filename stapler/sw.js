@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: die KI läuft vollständig im Browser, auch ohne Netz.
-const CACHE = 'stapler-ki-v2';
+const CACHE = 'stapler-ki-v3';
 const FILES = ['./', './index.html', './engine.js', './wissen.js', './manifest.json'];
 
 self.addEventListener('install', e => {

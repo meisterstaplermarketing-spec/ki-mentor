@@ -361,6 +361,17 @@
     </div>
 
     <div class="section">
+      <div class="section-label">Wissensquellen</div>
+      <div class="group" id="source-list"></div>
+      <div class="group" style="margin-top:8px">
+        <div class="row"><label>Link</label><input id="src-url" placeholder="https://…" autocomplete="off" /></div>
+        <div class="row"><label>Zugangscode</label><input id="src-code" placeholder="optional" autocomplete="off" /></div>
+        <div class="row"><span class="grow"></span><button class="link" onclick="addSource()">+ Quelle hinzufügen</button></div>
+      </div>
+      <div class="section-hint">Die KI liest alle Dokumente einer Quelle selbstständig und prüft alle 6 Stunden auf neue oder geänderte Inhalte. Unterstützt: Wissensquellen-Dienste (wie das Dokumenten-Center), PDF-, Text- und Webseiten-Links.</div>
+    </div>
+
+    <div class="section">
       <div class="section-label">Dokumente lesen</div>
       <div class="group" id="doc-list"></div>
       <div class="group" style="margin-top:8px">
@@ -702,9 +713,9 @@ function loadPdfLib() {
   return pdfLib;
 }
 
-async function pdfToText(file) {
+async function pdfToText(data) {
   const lib = await loadPdfLib();
-  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pdf = await lib.getDocument({ data: data instanceof ArrayBuffer ? data : await data.arrayBuffer() }).promise;
   const pages = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const content = await (await pdf.getPage(i)).getTextContent();
@@ -729,12 +740,164 @@ async function readDocFiles(e) {
   renderLearn();
 }
 
+// ── Wissensquellen: selbstständig aus Links lernen ──
+const SOURCES_KEY = 'stapler_ki_sources';
+const SOURCE_INTERVAL = 6 * 60 * 60 * 1000;
+const DEFAULT_SOURCES = [{
+  name: 'Meisterstapler Dokumenten-Center',
+  url: 'https://tdpyhcpimzzyrlrewqlf.supabase.co/functions/v1/stapler-wissen',
+  code: 'GA-Q6DV-555T-CLYG',
+}];
+let sources = [];
+let sourcesRunning = false;
+
+function loadSources() {
+  try { sources = JSON.parse(localStorage.getItem(SOURCES_KEY) || 'null') || DEFAULT_SOURCES.map(s => ({ ...s })); }
+  catch (e) { sources = DEFAULT_SOURCES.map(s => ({ ...s })); }
+}
+function saveSources() {
+  try { localStorage.setItem(SOURCES_KEY, JSON.stringify(sources)); } catch (e) { console.warn(e); }
+}
+
+function textHash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36) + text.length.toString(36);
+}
+
+function htmlToText(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, nav, footer, noscript').forEach(n => n.remove());
+  doc.querySelectorAll('h1, h2, h3, h4, p, li, tr, br, div').forEach(n => n.append('\n\n'));
+  return { title: (doc.title || '').trim(), text: doc.body ? doc.body.textContent.replace(/\n{3,}/g, '\n\n') : '' };
+}
+
+/** Holt die Inhaltsliste einer Quelle: [{ id, title, version, text | pdf }] */
+async function sourceItems(src) {
+  const url = new URL(src.url);
+  if (src.code) url.searchParams.set('code', src.code);
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  const type = res.headers.get('content-type') || '';
+  const fileName = decodeURIComponent(url.pathname.split('/').pop() || url.host);
+  if (type.includes('json')) {
+    const data = await res.json();
+    if (data.name && !src.name) src.name = data.name;
+    return data.items || [];
+  }
+  if (type.includes('pdf')) {
+    const buf = await res.arrayBuffer();
+    return [{ id: src.url, title: fileName.replace(/\.pdf$/i, ''), version: res.headers.get('last-modified') || String(buf.byteLength), pdfData: buf }];
+  }
+  const raw = await res.text();
+  const { title, text } = type.includes('html') ? htmlToText(raw) : { title: fileName, text: raw };
+  return [{ id: src.url, title: title || fileName, version: textHash(text), text }];
+}
+
+async function syncSource(src) {
+  const items = await sourceItems(src);
+  let learned = 0;
+  const todo = items.filter(it => it.id && it.version && !ki.hasDocumentVersion(it.id, it.version));
+  for (const [i, it] of todo.entries()) {
+    try {
+      if (todo.length > 1) setSourceStatus(src, `Lerne ${i + 1}/${todo.length}: ${it.title}`);
+      let text = it.text;
+      if (!text && (it.pdf || it.pdfData)) {
+        const data = it.pdfData || await (await fetch(it.pdf)).arrayBuffer();
+        text = await pdfToText(data);
+      }
+      const ev = ki.ingest({ id: it.id, version: it.version, title: it.title, source: src.name || it.title, text });
+      if (ev) { record(ev); learned++; }
+    } catch (e) {
+      console.warn('Quelle', it.title, e);
+    }
+  }
+  src.lastRun = Date.now();
+  src.items = items.length;
+  src.error = null;
+  return learned;
+}
+
+/** Prüft alle Quellen (force: auch wenn die letzte Prüfung kürzer als 6 Stunden her ist). */
+async function syncSources(force = false) {
+  if (sourcesRunning) return;
+  sourcesRunning = true;
+  try {
+    for (const src of sources) {
+      if (!force && src.lastRun && Date.now() - src.lastRun < SOURCE_INTERVAL) continue;
+      try {
+        const learned = await syncSource(src);
+        if (learned) toast(`${src.name || 'Quelle'}: ${learned} ${learned === 1 ? 'Dokument' : 'Dokumente'} neu gelernt`);
+      } catch (e) {
+        src.error = e.message;
+        src.lastRun = Date.now();
+      }
+      saveSources();
+    }
+  } finally {
+    sourcesRunning = false;
+    if (document.getElementById('learn-sheet').classList.contains('open')) renderLearn();
+  }
+}
+
+function setSourceStatus(src, text) {
+  const el = document.querySelector(`[data-src="${CSS.escape(src.url)}"]`);
+  if (el) el.textContent = text;
+}
+
+function addSource() {
+  const url = document.getElementById('src-url').value.trim();
+  const code = document.getElementById('src-code').value.trim();
+  try { new URL(url); } catch (e) { toast('Bitte einen gültigen Link eingeben'); return; }
+  if (sources.some(s => s.url === url && s.code === code)) { toast('Diese Quelle ist schon eingetragen'); return; }
+  sources.push({ url, code, name: '' });
+  saveSources();
+  document.getElementById('src-url').value = '';
+  document.getElementById('src-code').value = '';
+  renderLearn();
+  toast('Quelle hinzugefügt – ich lese sie jetzt');
+  syncSources(true);
+}
+
+function removeSource(i) {
+  if (!confirm('Diese Quelle entfernen? Bereits Gelerntes bleibt erhalten.')) return;
+  sources.splice(i, 1);
+  saveSources();
+  renderLearn();
+}
+
+function renderSources() {
+  const list = document.getElementById('source-list');
+  list.innerHTML = sources.length ? '' : '<div class="empty">Keine Quellen eingetragen.</div>';
+  sources.forEach((src, i) => {
+    const status = sourcesRunning ? 'Wird geprüft …'
+      : src.error ? `⚠️ ${src.error}`
+      : src.lastRun ? `${src.items ?? 0} Inhalte · geprüft ${new Date(src.lastRun).toLocaleString('de-DE')}`
+      : 'Noch nicht geprüft';
+    const row = el('div', 'row');
+    row.appendChild(el('div', 'grow', `🔗 ${esc(src.name || src.url)}<div class="sub" data-src="${esc(src.url)}">${esc(status)}</div>`));
+    const now = el('button', 'link', 'Aktualisieren');
+    now.onclick = () => { syncSources(true); renderSources(); };
+    const del = el('button', 'link red', '✕');
+    del.title = 'Entfernen';
+    del.onclick = () => removeSource(i);
+    row.append(now, del);
+    list.appendChild(row);
+  });
+}
+
 // ── Lern-Bereich ──
 function renderLearn() {
   const s = ki.summary();
   document.getElementById('stats').innerHTML = [
     [s.entries, 'Wissen'], [s.self, 'Selbst gelernt'], [s.documents, 'Dokumente'], [s.open, 'Offen'],
   ].map(([n, l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+
+  renderSources();
 
   const log = ki.selfLearnLog();
   const logEl = document.getElementById('self-log');
@@ -850,9 +1013,15 @@ function toast(msg) {
 
 // ── Start ──
 load();
+loadSources();
 updateBadge();
-if (db) { setDbStatus('Verbinde …', true); sync(); }
+// Erst gemeinsames Wissen holen (dann muss nicht jedes Gerät alles selbst lesen), dann Quellen prüfen.
+(async () => {
+  if (db) { setDbStatus('Verbinde …', true); await sync(); }
+  syncSources();
+})();
 setInterval(() => { if (db) sync(); }, 60000);
+setInterval(() => syncSources(), 15 * 60 * 1000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) conversation.end();
   else if (db) sync();

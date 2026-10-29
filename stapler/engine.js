@@ -52,7 +52,7 @@
     ['reif', 'bereif', 'bandag', 'raed', 'rad'],
     ['wartung', 'servic', 'instandhalt', 'inspektionsintervall', 'reparatur'],
     ['fehl', 'stor', 'defekt', 'kaputt', 'problem', 'geht', 'funktioniert'],
-    ['kipp', 'umkipp', 'umsturz', 'standsicherheit', 'stabilitat'],
+    ['umkipp', 'umsturz', 'standsicherheit', 'stabilitat', 'kippt', 'umgekippt'],
     ['lad', 'aufladen', 'ladegerat', 'ladestation', 'laden'],
     ['hydraul', 'hydraulikol', 'ol'],
     ['sicherheit', 'gefahr', 'unfall', 'schutz'],
@@ -60,6 +60,9 @@
     ['gurt', 'sicherheitsgurt', 'ruckhaltesystem', 'anschnall'],
     ['hubwag', 'ameis', 'palettenhubwag', 'handhubwag'],
     ['gebraucht', 'occasion', 'second'],
+    ['kipper', 'abrollkipp', 'muldenkipp', 'kippbehalt', 'kippmuld'],
+    ['geschwindigkeit', 'fahrgeschwindigkeit', 'schnell', 'tempo', 'hochstgeschwindigkeit'],
+    ['ubersicht', 'geratubersicht', 'sortiment', 'modell', 'modelle', 'auswahl', 'programm'],
     ['wechsel', 'austausch', 'tausch', 'ersetz', 'ausgetauscht', 'getauscht', 'erneuer'],
   ];
 
@@ -69,6 +72,10 @@
   function normalize(text) {
     return String(text || '')
       .toLowerCase()
+      // Zahlen vereinheitlichen: „1.600 kg“ = „1600 kg“, „2,5 t“ / „8 Tonnen“ = „2500 kg“ / „8000 kg“.
+      .replace(/(\d)\.(?=\d{3}(?!\d))/g, '$1')
+      .replace(/(\d+)(?:[.,](\d+))?\s*(?:t|to|tonnen?)(?![a-zäöüß])/g,
+        (m, a, b) => `${Math.round(parseFloat(`${a}.${b || 0}`) * 1000)} kg`)
       .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
       .replace(/[^a-z0-9\s-]/g, ' ')
       .replace(/-/g, ' ');
@@ -149,8 +156,11 @@
     };
     const pushText = text => {
       for (const sentence of text.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9•\-])/)) {
-        if (buf && buf.length + sentence.length > 900) flush();
-        buf += (buf ? ' ' : '') + sentence;
+        // Sehr lange „Sätze“ (z. B. Tabellen aus Datenblättern) an Wortgrenzen teilen.
+        for (const part of sentence.match(/.{1,900}(\s|$)|\S+/g) || []) {
+          if (buf && buf.length + part.length > 900) flush();
+          buf += (buf ? ' ' : '') + part.trim();
+        }
       }
     };
     for (const block of blocks) {
@@ -206,11 +216,14 @@
       const docs = [];
       for (const e of this.entries.values()) {
         if (e.deleted) continue;
-        // Frage & Stichwörter zählen doppelt, sie beschreiben die Absicht am besten.
-        // Bei Dokumentabschnitten trägt auch der Anfang des Abschnitts die Absicht.
-        const lead = e.origin === 'dokument' ? e.answer.slice(0, 160) : '';
-        const intent = [e.question, lead, ...(e.alt || []), ...(e.keywords || [])].join(' ');
-        const text = `${intent} ${intent} ${e.category || ''} ${e.answer}`;
+        // Absicht = Frage, Varianten, Stichwörter; bei Dokumenten Überschrift + Dokumenttitel.
+        // Sie zählt doppelt (bei Dokumenten die Überschrift dreifach), der Abschnittsanfang einfach.
+        const isDoc = e.origin === 'dokument';
+        const intent = isDoc
+          ? `${e.question} ${e.docTitle || ''}`
+          : [e.question, ...(e.alt || []), ...(e.keywords || [])].join(' ');
+        const lead = isDoc ? e.answer.slice(0, 160) : '';
+        const text = `${intent} ${intent} ${isDoc ? e.question : ''} ${lead} ${e.category || ''} ${e.answer}`;
         const terms = tokenize(text).concat(trigrams(intent));
         docs.push({ id: e.id, tf: counts(terms), len: terms.length });
       }
@@ -407,11 +420,27 @@
       return this.apply({ type: 'alias', question, entryId, via });
     }
 
-    /** Liest ein Dokument (Betriebsanleitung, Datenblatt, Schulungsunterlage …) ein. */
-    ingest({ title, text, source }) {
+    /**
+     * Liest ein Dokument (Betriebsanleitung, Datenblatt, Schulungsunterlage …) ein.
+     * Mit fester id + version (z. B. aus einer Wissensquelle) ersetzt eine neue Version die alte;
+     * dieselbe Version wird nie doppelt gelernt – auch nicht von mehreren Geräten.
+     */
+    ingest({ id, version, title, text, source }) {
       const passages = splitDocument(text);
       if (!passages.length) throw new Error('Im Dokument wurde kein verwertbarer Text gefunden');
-      return this.apply({ type: 'document', doc: { id: uid(), title: title || 'Dokument', source: source || title, passages } });
+      const doc = { id: id || uid(), version: version || null, title: title || 'Dokument', source: source || title, passages };
+      return this.apply({ id: id && version ? `doc:${id}:${version}` : undefined, type: 'document', doc });
+    }
+
+    /** Bekannte Version eines Dokuments (oder null). */
+    documentVersion(id) {
+      const d = this.documents.get(id);
+      return d ? d.version : null;
+    }
+
+    /** Wurde diese Version schon einmal verarbeitet (auch wenn das Dokument danach vergessen wurde)? */
+    hasDocumentVersion(id, version) {
+      return this.eventIds.has(`doc:${id}:${version}`);
     }
 
     /** Merkt sich eine Frage, die (noch) nicht sicher beantwortet werden konnte. */
@@ -463,18 +492,24 @@
         this._log(ev.ts, 'verknüpft', `„${ev.question}“ → ${e.question}`);
       } else if (ev.type === 'document') {
         const doc = ev.doc;
+        const known = this.documents.get(doc.id);
+        if (known && known.version && doc.version && doc.version < known.version) return null; // ältere Version
+        if (known) {
+          // Neue Version ersetzt die alte vollständig.
+          for (const [id, x] of [...this.entries]) if (x.docId === doc.id) { this.entries.delete(id); delete this.weights[id]; }
+        }
         const ids = new Set();
         doc.passages.forEach((p, i) => {
           const id = `${doc.id}#${i}`;
           ids.add(id);
           this.entries.set(id, {
-            id, docId: doc.id, question: p.question, answer: p.text,
+            id, docId: doc.id, docTitle: doc.title, question: p.question, answer: p.text,
             category: 'Dokument', source: doc.source || doc.title, origin: 'dokument', keywords: [],
           });
         });
-        this.documents.set(doc.id, { id: doc.id, title: doc.title, passages: doc.passages.length, ts: ev.ts });
+        this.documents.set(doc.id, { id: doc.id, title: doc.title, version: doc.version || null, passages: doc.passages.length, ts: ev.ts });
         this._dirty = true;
-        this._log(ev.ts, 'gelesen', `Dokument gelesen: „${doc.title}“ (${doc.passages.length} ${doc.passages.length === 1 ? 'Abschnitt' : 'Abschnitte'})`);
+        this._log(ev.ts, 'gelesen', `${known ? 'Dokument aktualisiert' : 'Dokument gelesen'}: „${doc.title}“ (${doc.passages.length} ${doc.passages.length === 1 ? 'Abschnitt' : 'Abschnitte'})`);
         this._resolveOpen(ids, ev.ts);
       } else if (ev.type === 'teach') {
         const entry = { ...ev.entry, origin: 'gelernt', keywords: [...(ev.entry.keywords || [])] };

@@ -40,6 +40,28 @@ sagt sie das und merkt sich die Frage – bei Staplern ist eine falsche Antwort 
 Jeder Lernschritt ist ein **Ereignis** (Event). Ohne Datenbank bleibt das Gelernte im Browser.
 Mit eigener Datenbank lernen alle Nutzer gemeinsam: Was die KI bei einem Kollegen lernt, weiß sie sofort bei allen.
 
+## Wissensquellen (Dokumenten-Center)
+
+Im Bereich 🎓 → „Wissensquellen“ kann man der KI einen **Link + Zugangscode** geben.
+Sie liest dann alle Inhalte dieser Quelle und prüft **alle 6 Stunden selbstständig**, ob etwas
+neu oder geändert ist – nur Neues wird gelernt, eine neue Version ersetzt die alte.
+
+Voreingestellt ist das **Meisterstapler Dokumenten-Center** – der Dienst
+`supabase/functions/stapler-wissen` im Supabase-Projekt „Meisterstapler Leads“. Er liefert:
+
+| Inhalt | Quelle | Hinweis |
+|---|---|---|
+| Gerätekatalog (alle aktiven Geräte, technische Daten, Ausstattung) | `kat_products`, `kat_categories` | **ohne** Einkaufspreis, Bonus und Listenpreis |
+| Online-Shop (Zubehör, Anbaugeräte …) | `app_settings` → `katalog` | mit den öffentlichen Shop-Preisen |
+| Datenblätter (PDF) | Speicherordner `datasheets` | zeitlich begrenzte Download-Links |
+
+Der Dienst antwortet nur mit dem Zugangscode. Weil alle Lernschritte geteilt werden, liest nur das
+erste Gerät neue PDFs – alle anderen bekommen das Wissen direkt aus der gemeinsamen Datenbank.
+
+Weitere Quellen: Ein direkter Link auf ein PDF, eine Text- oder Webseite funktioniert ebenfalls,
+sofern der Server den Abruf aus dem Browser erlaubt (CORS). Neue Datenblätter einfach in den
+Speicherordner `datasheets` legen bzw. Geräte im Katalog pflegen – die KI lernt sie von selbst.
+
 ## Gemeinsames Lernen
 
 Ist bereits eingerichtet: Die App speichert alle Lernschritte in der Tabelle `stapler_events` im

@@ -144,9 +144,22 @@ assert(!ki2.ask('Öffnungszeiten').answered || ki2.ask('Öffnungszeiten').best.i
   assert.strictEqual(k2._learnedSynonym('karr'), 'stapl');
   assert.strictEqual(k2.ask('Wann muss die Karre zum Doc?').best.id, 'pruef-uvv');
 
+  // Versionierte Dokumente: neue Version ersetzt alte, gleiche Version wird nicht doppelt gelernt.
+  const v1 = k2.ingest({ id: 'ds:M16A', version: '2026-10-01', title: 'M16A Datenblatt', text: 'Technische Daten\n\nDer M16A hebt 1.600 kg auf eine Hubhöhe von 4.800 mm und hat eine Lithium-Batterie.' });
+  assert(v1 && k2.documentVersion('ds:M16A') === '2026-10-01');
+  assert.strictEqual(k2.ingest({ id: 'ds:M16A', version: '2026-10-01', title: 'x', text: 'Doppelt gelesen, sollte ignoriert werden.' }), null);
+  k2.ingest({ id: 'ds:M16A', version: '2026-10-20', title: 'M16A Datenblatt', text: 'Technische Daten\n\nDer M16A hebt 1.600 kg auf eine Hubhöhe von 6.000 mm und hat eine Lithium-Batterie.' });
+  const m16 = k2.ask('Welche Hubhöhe hat der M16A?');
+  assert(m16.answered && /6\.000 mm/.test(m16.best.answer), 'Neue Datenblatt-Version nicht übernommen');
+  assert.strictEqual([...k2.entries.values()].filter(e => e.docId === 'ds:M16A').length, 1, 'Alte Version nicht ersetzt');
+  // Lange Tabellenzeilen ohne Satzzeichen werden in handliche Abschnitte geteilt.
+  const table = StaplerEngine.splitDocument(Array.from({ length: 400 }, (_, i) => `Wert${i} 123 mm`).join(' '));
+  assert(table.length > 1 && table.every(p => p.text.length <= 1000), 'Lange Tabelle nicht geteilt');
+
   // Dokument wieder vergessen.
-  k2.forget(k2.documentList()[0].id);
-  assert.strictEqual(k2.summary().documents, 0);
+  const before = k2.summary().documents;
+  k2.forget(k2.documentList().find(d => d.title.startsWith('Hallenordnung')).id);
+  assert.strictEqual(k2.summary().documents, before - 1);
   const gone = k2.ask('Höchstgeschwindigkeit Halle 3');
   assert(!gone.answered || gone.best.origin !== 'dokument');
   console.log('✔ Selbstständiges Lernen: Verknüpfen, Umformulieren, Synonyme, Dokumente, offene Fragen');
